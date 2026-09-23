@@ -1,0 +1,53 @@
+ZÁHON — poslední skleník (Ministerstvo zemědělské asimilace, Sektor 7)
+=====================================================================
+Dystopická obrana skleníku. Rostliny proti asimilovaným.
+
+SPUŠTĚNÍ
+  Dvojklik na HRAT.bat  (sám doinstaluje pygame-ce, pokud chybí)
+  nebo:  python -m pip install pygame-ce   a pak   python zahon.py
+  Potřeba: Python 3.8+
+
+OVLÁDÁNÍ
+  Myš: klik na balíček nahoře, pak na políčko
+  Klik na světlo = sebrat (bez světla nezasadíš nic)
+  1–9 výběr balíčku · S lopata · pravé tlačítko zruší výběr
+  P / Esc pauza · M hudba · F11 celá obrazovka
+
+PŘÍBĚH (5 úrovní)
+  1 SUTINY    — základy: Světlonoš a Trnomet
+  2 KANÁLY    — dozorci se štíty, Pařez a Ostružiník
+  3 VÝPADEK   — hraje se ve tmě, vidíš jen kolem Světlonošů
+  4 HRADBA    — Exekutor s razítkem ZAMÍTNUTO a Kazatelé
+  5 KOMBAJN   — boss přes tři řady
+  Po dohrání se odemkne tajná úroveň a Nekonečná noc.
+
+TAJEMSTVÍ
+  - Pampeliška naděje umí pylem PROBUDIT zraněného asimilovaného.
+    Probuzený se otočí, bojuje za tebe a pak odejde hledat rodinu.
+  - Občas se protrhne smog (Paprsek naděje) a přiletí ptáci.
+  - Tajná úroveň KOŘENY je puzzle: hraješ za probuzené a neseš
+    semínka přes staré obranné rostliny. Pevný rozpočet, přemýšlej.
+  - V hlavním menu jde naťukat kód, který odemkne vše. Nápověda:
+    to, co v tajné úrovni neseš.
+
+LAN — SOUBOJ O SKLENÍK
+  PC 1: LAN: ZALOŽIT HRU (zvol mód a stranu)   PC 2: LAN: PŘIPOJIT SE
+  Jeden hraje za kytky, druhý za zombie. Zombie mají 20 s přípravu.
+  Kytky vyhrají, když vydrží do konce limitu. Zombie, když prorazí.
+  V odvetě se strany prohodí.
+  Módy:
+    KLASIKA         — 5 minut
+    VÝPADEK PROUDU  — kytky ve tmě, zombie vidí vše
+    KYSELÝ DÉŠŤ     — pravidelný déšť leptá všechny, vyšší příjem
+    BLESKOVKA       — 3 minuty, dvojnásobný příjem, Exekutor hned
+  Síť: TCP 50515, hledání hostitelů UDP 50516. Při prvním spuštění
+  povol Python ve Windows firewallu (privátní síť).
+  Test na jednom PC: připoj se na 127.0.0.1.
+
+ZVUKY
+  Složka sounds/ — všechny zvuky i hudba jsou vlastní, syntetizované.
+  Kterýkoli soubor můžeš nahradit vlastním se stejným jménem
+  (.wav / .ogg / .mp3). Smazané se při spuštění znovu vygenerují.
+
+ULOŽENÍ
+  zahon_save.json vedle hry (postup, rekord Nekonečné noci).

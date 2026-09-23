@@ -3,3 +3,4 @@
 *.zip
 # Lokální data hráčů
 highscores.csv
+zahon_save.json
