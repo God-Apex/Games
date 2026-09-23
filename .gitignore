@@ -1,0 +1,5 @@
+﻿# Velké binárky se do repa nedávají
+*.exe
+*.zip
+# Lokální data hráčů
+highscores.csv

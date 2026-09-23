@@ -1,0 +1,43 @@
+KVÓTA — dystopický tetris (Ministerstvo stavebních bloků, Sektor 7)
+====================================================================
+
+SPUŠTĚNÍ
+  Dvojklik na HRAT.bat  (sám doinstaluje pygame-ce, pokud chybí)
+  nebo:  python -m pip install pygame-ce   a pak   python kvota.py
+  Potřeba: Python 3.8+
+
+OVLÁDÁNÍ
+  ← →          pohyb             ↑ / X        rotace po směru
+  ↓            zrychlený pád     Z / Ctrl     rotace proti směru
+  MEZERNÍK     okamžitý shoz     C / Shift    zadržet blok
+  ENTER        (LAN) CENZURA     P            pauza (jen solo)
+  M hudba · F11 celá obrazovka · Esc zpět
+
+HIGHSCORE
+  highscores.csv vedle hry. Oddělovač ";" + UTF-8 s BOM, takže se
+  v českém Excelu otevře rovnou do sloupců i s diakritikou.
+  Sloupce: jmeno;skore;radky;smena;cas_s;datum
+
+ZVUKY
+  Složka sounds/ — všechny efekty i hudba jsou syntetizované (8-bit styl),
+  hudba je vlastní temná aranžmá lidové písně Korobejniki (volné dílo).
+  Kterýkoliv soubor můžeš nahradit vlastním se stejným jménem
+  (.wav / .ogg / .mp3), např. music.ogg. Smazané soubory se při dalším
+  spuštění znovu vygenerují.
+
+LAN REŽIM „SABOTÁŽ“
+  PC 1: LAN: ZALOŽIT SABOTÁŽ     PC 2: LAN: PŘIPOJIT SE
+  Hostitel se v síti najde sám (UDP 50506), případně zadej IP ručně.
+  Hra běží na TCP portu 50505 — při prvním spuštění povol Python
+  ve Windows firewallu (privátní síť). Test na jednom PC: 127.0.0.1.
+
+  Pravidla:
+  - Oba hrajete stejné pořadí bloků (sdílené semínko).
+  - Smazané řádky posílají soupeři beton: 2→1, 3→2, 4→4 řádky,
+    čtveřice po čtveřici +1, série 3+ smazání +1, série 5+ další +1.
+  - Příchozí beton (červený sloupec u desky) dopadne až po tvém dalším
+    položení bez smazání — smazáním řádků ho můžeš předem zrušit.
+  - CENZURA: mazáním plníš měřič, plný = ENTER a soupeřova hromada
+    na 5 s zčerná (vidí jen padající blok a jeho stín).
+  - INFLACE KVÓTY: po 90 s kola dostávají oba každých 15 s 1 řádek betonu.
+  - Kdo přeteče, prohrál kolo. Hraje se na 2 vítězná kola.
