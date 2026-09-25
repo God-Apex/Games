@@ -66,8 +66,8 @@ WARN = (255, 64, 50)
 AMBER = (255, 170, 20)
 CYAN = (60, 220, 210)
 TOX = (170, 90, 220)
-LEAF = (70, 170, 60)
-LEAF_D = (36, 100, 36)
+LEAF = (92, 196, 76)
+LEAF_D = (52, 132, 50)
 BLOOD = (120, 16, 16)
 MSG_COL = {"warn": WARN, "hope": HOPE, "info": TEXT, "acid": ACID}
 
@@ -98,27 +98,37 @@ PLANTS = {
                  desc="Spolkne asimilovaného před sebou. Pak 25 s tráví a je bezbranná."),
     'pamp': dict(name="PAMPELIŠKA NADĚJE", cost=125, cd=15, hp=300, rate=2.0, dmg=10,
                  desc="Její pyl občas probudí zraněného asimilovaného. Sousední rostliny střílí rychleji."),
+    'hlid': dict(name="PROBUZENÁ HLÍDKA", cost=0, cd=4, hp=600,
+                 desc="Probuzený, který se vrátil pomoct. Stojí na místě a pere se s asimilovanými. Získáš ho, když probuzený odejde z pole (max. 2)."),
 }
 PLANT_ORDER = ['lampa', 'trn', 'parez', 'ostruz', 'mina', 'jed', 'maso', 'pamp']
+GUARD_MAX = 2
+PILE = 5            # od tolika částí těl na políčku vzniká hromada
+DIFFS = {
+    'lehka': dict(name="LEHKÁ", hp=0.8, spd=0.85, light=50, harvest=False),
+    'normal': dict(name="NORMÁLNÍ", hp=1.0, spd=1.0, light=0, harvest=False),
+    'kruta': dict(name="KRUTÁ", hp=1.25, spd=1.1, light=-25, harvest=True),
+}
+DIFF_ORDER = ['lehka', 'normal', 'kruta']
 PROJ_SPD = {'trn': 380, 'jed': 330, 'pamp': 300}
 
 # ---------------------------------------------------------------- asimilovaní
 ZOMBIES = {
-    'zak': dict(name="ASIMILOVANÝ", hp=200, shield=0, speed=18, bite=100, cost=50, cd=3,
+    'zak': dict(name="ASIMILOVANÝ", hp=200, shield=0, speed=14.5, bite=100, cost=50, cd=3,
                 desc="Bývalý občan. Čip v zátylku, prázdné oči. Jde dál."),
-    'bez': dict(name="BĚŽEC", hp=150, shield=0, speed=38, bite=80, cost=75, cd=5,
+    'bez': dict(name="BĚŽEC", hp=150, shield=0, speed=30, bite=80, cost=75, cd=5,
                 desc="Rychlý a křehký. Běží, dokud nepadne."),
-    'doz': dict(name="DOZORCE", hp=200, shield=550, speed=16, bite=100, cost=125, cd=8,
+    'doz': dict(name="DOZORCE", hp=200, shield=550, speed=13, bite=100, cost=125, cd=8,
                 desc="Štít zachytí trny i spóry. Výbuch a ostružiník jdou přes něj."),
-    'post': dict(name="POSTŘIKOVAČ", hp=300, shield=0, speed=16, bite=100, cost=150, cd=10,
+    'post': dict(name="POSTŘIKOVAČ", hp=300, shield=0, speed=13, bite=100, cost=150, cd=10,
                  desc="Z dálky stříká herbicid na nejbližší rostlinu v řadě."),
-    'dron': dict(name="DRONOVÝ SKOKAN", hp=250, shield=0, speed=30, bite=100, cost=125, cd=8,
+    'dron': dict(name="DRONOVÝ SKOKAN", hp=250, shield=0, speed=24, bite=100, cost=125, cd=8,
                  desc="Přeskočí první rostlinu v cestě. Pak už jen jde."),
-    'kaz': dict(name="KAZATEL", hp=350, shield=0, speed=14, bite=100, cost=175, cd=15,
+    'kaz': dict(name="KAZATEL", hp=350, shield=0, speed=11, bite=100, cost=175, cd=15,
                 desc="Megafon zrychluje a léčí okolní asimilované. Chrání je před probuzením."),
-    'exe': dict(name="EXEKUTOR", hp=3000, shield=0, speed=10, bite=0, cost=450, cd=40,
-                desc="Obří úředník s razítkem ZAMÍTNUTO. Rozdrtí cokoli. Když je zraněný, hodí běžce."),
-    'boss': dict(name="KOMBAJN", hp=4500, shield=0, speed=3.5, bite=0, cost=0, cd=0,
+    'exe': dict(name="EXEKUTOR", hp=2200, shield=0, speed=8, bite=0, cost=450, cd=40,
+                desc="Obří úředník s razítkem ZAMÍTNUTO. Před každou ranou se 1,8 s napřahuje, pak rostlinu rozdrtí. Když je zraněný, hodí běžce. Na něj: miny, Masožravka, Jedovatka (zpomalí i nápřah)."),
+    'boss': dict(name="KOMBAJN", hp=4500, shield=0, speed=3.0, bite=0, cost=0, cd=0,
                  desc="Stroj na sklizeň všeho živého. Zabírá tři řady."),
 }
 ZOMB_ORDER = ['zak', 'bez', 'doz', 'post', 'dron', 'kaz', 'exe']
@@ -193,11 +203,11 @@ ENDING = ["KOMBAJN utichl.",
           "— KONEC PRVNÍ SEZÓNY —",
           "Pod kořeny něco šeptá… (tajná úroveň odemčena)"]
 
-PUZZLE_BUDGET = 1050
+PUZZLE_BUDGET = 1125
 PUZZLE_LAYOUT = [
     (0, 0, 'trn'), (0, 3, 'parez'),
     (1, 0, 'trn'), (1, 2, 'trn'),
-    (2, 1, 'jed'), (2, 3, 'ostruz'), (2, 4, 'ostruz'),
+    (2, 1, 'jed'), (2, 4, 'ostruz'),
     (3, 0, 'trn'), (3, 2, 'maso'),
     (4, 0, 'lampa'), (4, 1, 'lampa'), (4, 3, 'mina'), (4, 4, 'trn'),
 ]
@@ -236,7 +246,7 @@ def plants_for_level(n):
 
 # ================================================================ SIMULACE
 class Plant:
-    __slots__ = ("k", "lane", "col", "hp", "mhp", "t", "st")
+    __slots__ = ("k", "lane", "col", "hp", "mhp", "t", "st", "age")
 
     def __init__(self, k, lane, col, armed=False):
         d = PLANTS[k]
@@ -244,6 +254,7 @@ class Plant:
         self.hp = self.mhp = d["hp"]
         self.t = {'lampa': 7.0, 'mina': 0.0 if armed else d.get('arm', 0)}.get(k, 0.0)
         self.st = 0.0
+        self.age = 0.0
 
     @property
     def cx(self):
@@ -276,10 +287,15 @@ class Zombie:
         self.t2 = 0.0
         self.enraged = False
         self.silent = False
+        self.climb_col = -1
+        self.climb_t = 0.0
+        self.top_col = -1
+        self.elev = 0.0
+        self.blast = None
         if k == 'boss':
             self.lane = 2
             self.lanes = (1, 2, 3)
-            self.t1, self.t2 = 8.0, 12.0
+            self.t1, self.t2 = 10.0, 14.0
 
     def hostile(self):
         return not self.awake and self.hp > 0
@@ -287,14 +303,17 @@ class Zombie:
     def airborne(self):
         return self.jump_t > 0
 
+    def high(self):
+        return self.jump_t > 0 or self.elev > 12
+
     def front(self):
         return self.x - 110 if self.k == 'boss' else self.x
 
     def jump_y(self):
         if self.jump_t <= 0:
-            return 0.0
+            return self.elev
         f = 1 - self.jump_t / 0.7
-        return math.sin(math.pi * f) * 60
+        return math.sin(math.pi * f) * 60 + self.elev
 
     def flags(self):
         f = 0
@@ -326,8 +345,13 @@ class Proj:
 class World:
     """Celá hra bez grafiky. kind: sp | pvp | puzzle | endless."""
 
-    def __init__(self, kind, level=0, pvp_mode='klasika', seed=None):
+    def __init__(self, kind, level=0, pvp_mode='klasika', seed=None, diff='normal'):
         self.rng = random.Random(seed)
+        self.diff = diff if kind in ('sp', 'endless') else 'normal'
+        self.dmods = DIFFS[self.diff]
+        self.gore = [[0] * COLS for _ in range(LANES)]
+        self.guards = 0
+        self.harvest_msg = False
         self.kind = kind
         self.level = level
         self.pvp_mode = pvp_mode
@@ -405,6 +429,8 @@ class World:
         elif kind == 'endless':
             self.plant_list = PLANT_ORDER[:]
             self.light = 150
+        if kind in ('sp', 'endless'):
+            self.light = max(50, self.light + self.dmods['light'])
 
     # ------------------------------------------------------------ pomocné
     def nid(self):
@@ -483,6 +509,21 @@ class World:
         if n % 3 == 0:
             self.beam_times.append(t + 5)
 
+    @staticmethod
+    def col_of(x):
+        if BX <= x < BOARD_R:
+            return int((x - BX) // CW)
+        return None
+
+    def add_gore(self, lane, col, n, scatter=False):
+        for _ in range(n):
+            l, c = lane, col
+            if scatter:
+                opts = [(lane + dl, col + dc) for dl in (-1, 0, 1) for dc in (-1, 0, 1)
+                        if (dl or dc) and 0 <= lane + dl < LANES and 0 <= col + dc < COLS]
+                l, c = self.rng.choice(opts)
+            self.gore[l][c] += 1
+
     def pick_lane(self):
         lanes = list(range(LANES))
         if self.last_lane >= 0 and self.rng.random() < 0.7:
@@ -497,6 +538,9 @@ class World:
         if x is None:
             x = SPAWN_X + self.rng.uniform(0, 30)
         z = Zombie(self.nid(), k, lane, x, self.rng)
+        if self.kind in ('sp', 'endless'):
+            z.hp = z.mhp = int(z.mhp * self.dmods['hp'])
+            z.speed *= self.dmods['spd']
         self.zombies.append(z)
         if k == 'boss':
             z.x = SPAWN_X + 60
@@ -557,7 +601,12 @@ class World:
             if side == 'P':
                 if typ == 'plant':
                     k, lane, col = a[1], int(a[2]), int(a[3])
-                    if k not in self.plant_list or not (0 <= lane < LANES and 0 <= col < COLS):
+                    if k == 'hlid':
+                        if self.guards <= 0:
+                            return
+                    elif k not in self.plant_list:
+                        return
+                    if not (0 <= lane < LANES and 0 <= col < COLS):
                         return
                     cost = PLANTS[k]['cost']
                     if self.grid[lane][col] or self.cdp.get(k, 0) > 0 or self.light < cost:
@@ -567,6 +616,8 @@ class World:
                             return
                     self.grid[lane][col] = Plant(k, lane, col)
                     self.light -= cost
+                    if k == 'hlid':
+                        self.guards -= 1
                     self.cdp[k] = PLANTS[k]['cd']
                     self.ev('snd', 'plant')
                     self.ev('fx', 'dust', BX + col * CW + CW / 2, lane_cy(lane))
@@ -701,6 +752,7 @@ class World:
                     continue
                 rate = 1.25 if (lane, col) in self.aura else 1.0
                 p.st = max(0.0, p.st - dt)
+                p.age += dt
                 k, cx, cy = p.k, p.cx, lane_cy(lane)
                 if k == 'lampa':
                     if self.kind == 'puzzle':
@@ -742,7 +794,7 @@ class World:
                                     best = z
                         if best:
                             if best.k in ('exe', 'boss'):
-                                self.hurt(best, 400)
+                                self.hurt(best, 800 if best.k == 'exe' else 400)
                             else:
                                 best.hp = 0
                                 best.silent = True
@@ -750,6 +802,13 @@ class World:
                             p.t = PLANTS['maso']['chew']
                             p.st = 0.3
                             self.ev('snd', 'chomp')
+                elif k == 'hlid':
+                    p.st = 0.0
+                    for z in self.zombies:
+                        if z.hostile() and z.k != 'boss' and lane in z.lanes and not z.high() and 0 <= z.front() - cx <= 50:
+                            self.hurt(z, 60 * dt)
+                            p.st = 0.2
+                            break
                 elif k == 'ostruz':
                     p.t -= dt
                     if p.t <= 0:
@@ -766,6 +825,11 @@ class World:
         for z in self.zombies:
             if z.hostile() and lane in z.lanes and abs(z.front() - cx) < 80:
                 self.hurt(z, PLANTS['mina']['dmg'])
+                z.blast = (p.lane, p.col)
+        g = self.gore[p.lane][p.col]
+        if g:
+            self.gore[p.lane][p.col] = 0
+            self.add_gore(p.lane, p.col, g, scatter=True)
         self.grid[p.lane][p.col] = None
         self.ev('snd', 'explode')
         self.ev('fx', 'boom', cx, lane_cy(lane))
@@ -807,7 +871,7 @@ class World:
             if z.awake:
                 self._awake(z, dt)
                 continue
-            spd = z.speed * slowk * (1.4 if z.buff else 1.0)
+            spd = z.speed * slowk * (1.25 if z.buff else 1.0)
             bite = z.bite * slowk * (1.2 if z.buff else 1.0)
             if z.jump_t > 0:
                 z.jump_t -= dt
@@ -816,7 +880,7 @@ class World:
                 if z.jump_t <= 0:
                     z.jump_t = 0.0
                     z.jumped = True
-                    z.speed = 18
+                    z.speed = 14.5 * (self.dmods['spd'] if self.kind in ('sp', 'endless') else 1.0)
                 continue
             foe = None
             for a in self.zombies:
@@ -853,7 +917,7 @@ class World:
                     continue
                 if z.k == 'exe':
                     z.wind += dt * slowk
-                    if z.wind >= 1.1:
+                    if z.wind >= 1.8:
                         z.wind = 0.0
                         self.grid[p.lane][p.col] = None
                         self.ev('snd', 'smash')
@@ -867,6 +931,24 @@ class World:
                     self.kill_plant(p)
                 continue
             z.wind = 0.0
+            col = self.col_of(z.x)
+            g = self.gore[z.lane][col] if col is not None else 0
+            if g >= PILE and z.k != 'exe':
+                if z.top_col != col:
+                    if z.climb_col != col:
+                        z.climb_col = col
+                        z.climb_t = 2.0
+                    z.climb_t -= dt
+                    z.elev = 22 * (1 - max(0.0, z.climb_t) / 2.0)
+                    if z.climb_t <= 0:
+                        z.top_col = col
+                    continue
+                z.elev = 22.0
+                spd *= 0.6
+            else:
+                z.top_col = -1
+                z.elev = max(0.0, z.elev - 70 * dt)
+                spd *= 1 - min(0.4, 0.1 * g) if z.k != 'exe' else 1 - min(0.2, 0.05 * g)
             z.x -= spd * dt
             if z.k == 'exe' and not z.thrown and z.hp < z.mhp / 2:
                 z.thrown = True
@@ -910,10 +992,14 @@ class World:
             z.hp = 0
             z.silent = True
             self.freed += 1
+            self.ev('snd', 'freed')
             if self.kind != 'puzzle':
                 self.light += 50
-            self.ev('snd', 'freed')
-            self.ev('msg', "Probuzený odešel hledat svou rodinu. +50 světla", 'hope')
+                if self.guards < GUARD_MAX:
+                    self.guards += 1
+                    self.ev('msg', "Probuzený se vrátí jako hlídka. +50 světla", 'hope')
+                else:
+                    self.ev('msg', "Probuzený odešel hledat svou rodinu. +50 světla", 'hope')
 
     def try_awaken(self, z):
         if z.k not in AWAKENABLE or z.buff or z.hp <= 0 or z.shield > 0:
@@ -941,6 +1027,16 @@ class World:
             for a in self.zombies:
                 if a.awake and a.hp > 0 and a.lane == l and abs(a.x - f) < 30:
                     a.hp = 0
+            col = self.col_of(f)
+            if self.dmods['harvest'] and col is not None and self.gore[l][col]:
+                n = self.gore[l][col]
+                self.gore[l][col] = 0
+                z.hp = min(z.mhp, z.hp + 60 * n)
+                self.ev('fx', 'gulp', f, lane_cy(l))
+                self.ev('snd', 'chomp')
+                if not self.harvest_msg:
+                    self.harvest_msg = True
+                    self.ev('msg', "KOMBAJN SKLÍZÍ TĚLA A OPRAVUJE SE", 'warn')
         if not z.enraged and z.hp < z.mhp / 2:
             z.enraged = True
             self.ev('snd', 'roar')
@@ -948,7 +1044,7 @@ class World:
             self.ev('shake', 0.5)
         z.t1 -= dt
         if z.t1 <= 0:
-            z.t1 = 6.0 if z.enraged else 9.0
+            z.t1 = 7.0 if z.enraged else 11.0
             targets = list(self.plants())
             if targets:
                 p = self.rng.choice(targets)
@@ -957,8 +1053,8 @@ class World:
                 self.ev('snd', 'throw')
         z.t2 -= dt
         if z.t2 <= 0:
-            z.t2 = 10.0 if z.enraged else 15.0
-            for _ in range(3 if z.enraged else 2):
+            z.t2 = 12.0 if z.enraged else 16.0
+            for _ in range(2 if z.enraged else 1):
                 self.spawn_z(self.rng.choice(['zak', 'zak', 'bez', 'doz']))
         if f < BX - 5:
             self._reach(z)
@@ -968,7 +1064,7 @@ class World:
             pr.x += PROJ_SPD[pr.k] * dt
             hit = None
             for z in self.zombies:
-                if not z.hostile() or pr.lane not in z.lanes or z.airborne():
+                if not z.hostile() or pr.lane not in z.lanes or z.high():
                     continue
                 if z.k == 'boss':
                     if pr.x >= z.front():
@@ -1072,7 +1168,14 @@ class World:
             if z.hp <= 0:
                 if not z.silent:
                     self.ev('snd', 'die')
-                    self.ev('fx', 'die', z.x, lane_cy(z.lane), z.k, 1 if z.awake else 0)
+                    self.ev('fx', 'die', z.x, lane_cy(z.lane), z.k, 1 if z.awake else 0, z.flags() & 2)
+                    n = 3 if z.k == 'exe' else (0 if z.k == 'boss' else 1)
+                    if z.blast:
+                        self.add_gore(z.blast[0], z.blast[1], n, scatter=True)
+                    else:
+                        col = self.col_of(z.x)
+                        if col is not None:
+                            self.add_gore(z.lane, col, n)
                 if z.k == 'boss':
                     self.ev('fx', 'bigboom', z.x, lane_cy(2))
                     self.ev('snd', 'explode')
@@ -1103,7 +1206,7 @@ class World:
         for row in self.grid:
             for p in row:
                 if p:
-                    pl.append([p.k, p.lane, p.col, round(p.hp), p.mhp, round(p.t, 2), round(p.st, 2)])
+                    pl.append([p.k, p.lane, p.col, round(p.hp), p.mhp, round(p.t, 2), round(p.st, 2), round(min(p.age, 9), 2)])
         zs = [[z.id, z.k, z.lane, round(z.x, 1), round(z.hp), z.mhp, round(z.shield), z.mshield,
                z.flags(), round(z.anim, 2), round(z.jump_y(), 1), round(z.wind, 2)]
               for z in self.zombies if z.hp > 0]
@@ -1127,7 +1230,10 @@ class World:
             't': round(self.time, 2), 'cd': round(self.countdown, 2), 'pl': pl, 'z': zs, 'pr': pr, 'li': li,
             'ba': ba, 'mw': [round(m) for m in self.mowers], 'sd': self.seeds[:],
             'L': int(self.light), 'Z': int(self.zloba), 'pk': self.plant_list, 'zk': self.zomb_list,
-            'cp': {k: round(self.cdp.get(k, 0) / PLANTS[k]['cd'], 3) for k in self.plant_list},
+            'cp': {k: round(self.cdp.get(k, 0) / PLANTS[k]['cd'], 3) for k in self.plant_list + ['hlid']},
+            'cs': {k: round(self.cdp.get(k, 0), 1) for k in self.plant_list + ['hlid']},
+            'zs': {k: round(self.cdz.get(k, 0), 1) for k in self.zomb_list},
+            'gr': [c for row in self.gore for c in row], 'gd': self.guards, 'df': self.diff,
             'cz': {k: round(self.cdz.get(k, 0) / max(0.1, self.zcd[k]), 3) for k in self.zomb_list},
             'lk': lk, 'res': self.result, 'kind': self.kind, 'lvl': self.level, 'mode': self.pvp_mode,
             'dark': self.dark, 'rain': self.rain > 0, 'beam': self.beam, 'prog': round(prog, 3),
@@ -1812,7 +1918,7 @@ def mix(a, b, k):
     return tuple(int(a[i] + (b[i] - a[i]) * k) for i in range(3))
 
 
-MENU = ["PŘÍBĚH SKLENÍKU", "LAN: ZALOŽIT HRU", "LAN: PŘIPOJIT SE", "ATLAS", "OPUSTIT SKLENÍK"]
+MENU = ["PŘÍBĚH SKLENÍKU", "OBTÍŽNOST", "LAN: ZALOŽIT HRU", "LAN: PŘIPOJIT SE", "ATLAS", "OPUSTIT SKLENÍK"]
 MAP_NODES = [('lvl', 0), ('lvl', 1), ('lvl', 2), ('lvl', 3), ('lvl', 4), ('secret', 0), ('endless', 0)]
 SECRET_CODE = "SEMINKO"
 
@@ -1890,13 +1996,13 @@ class App:
     def _build_assets(self):
         self.scan = pygame.Surface((W, H), pygame.SRCALPHA)
         for y in range(0, H, 3):
-            pygame.draw.line(self.scan, (0, 0, 0, 35), (0, y), (W, y))
+            pygame.draw.line(self.scan, (0, 0, 0, 16), (0, y), (W, y))
         v = pygame.Surface((64, 40), pygame.SRCALPHA)
         for y in range(40):
             for x in range(64):
                 dx, dy = (x - 31.5) / 32, (y - 19.5) / 20
                 d = math.sqrt(dx * dx + dy * dy)
-                v.set_at((x, y), (0, 0, 0, int(max(0, min(200, (d - 0.65) * 360)))))
+                v.set_at((x, y), (0, 0, 0, int(max(0, min(120, (d - 0.78) * 300)))))
         self.vig = pygame.transform.smoothscale(v, (W, H))
         self.bg = self._build_bg()
         self.glow = pygame.Surface((80, 80), pygame.SRCALPHA)
@@ -1918,6 +2024,13 @@ class App:
             pygame.draw.line(self.beam_s, (255, 230, 150, int(90 * k ** 2)), (x, 0), (x, BY + LANES * CH))
         self.dimpk = pygame.Surface((PK_W, PK_H), pygame.SRCALPHA)
         self.dimpk.fill((0, 0, 0, 150))
+        self.shadow = pygame.Surface((56, 16), pygame.SRCALPHA)
+        pygame.draw.ellipse(self.shadow, (0, 0, 0, 90), (0, 0, 56, 16))
+        self.shadow_big = pygame.transform.smoothscale(self.shadow, (90, 22))
+        self.corpses = []
+        self.gore_cache = {}
+        self.php = {}
+        self.pshake = {}
         self.stamp_txt = _font(10, True).render("ZAMÍTNUTO", True, (230, 60, 50))
         self.boss_txt = _font(13, True).render("MINISTERSTVO SKLIZNĚ", True, (240, 200, 60))
 
@@ -1939,7 +2052,7 @@ class App:
         pygame.draw.rect(s, (30, 28, 24), (0, BY + LANES * CH, W, H - BY - LANES * CH))
         for lane in range(LANES):
             for col in range(COLS):
-                c = (44, 42, 34) if (lane + col) % 2 == 0 else (38, 36, 30)
+                c = (56, 53, 43) if (lane + col) % 2 == 0 else (48, 46, 38)
                 rr = pygame.Rect(BX + col * CW, BY + lane * CH, CW, CH)
                 pygame.draw.rect(s, c, rr)
                 for _ in range(3):
@@ -2027,6 +2140,10 @@ class App:
 
     # ---------------------------------------------------------- rostliny
     def draw_plant(self, c, k, cx, fy, t, hpr=1.0, pt=0.0, pst=0.0, s=1.0):
+        if k == 'hlid':
+            self.draw_zombie(c, 'zak', cx, fy + 4 * s, t, 2 | (1 if pst > 0 else 0), hpr, 0, t, s=s)
+            return
+
         def P(v):
             return int(round(v * s))
         cx, fy = int(cx), int(fy)
@@ -2057,7 +2174,7 @@ class App:
         top = (cx + sway, fy - P(34))
         if k == 'parez':
             body = pygame.Rect(cx - P(27), fy - P(64), P(54), P(56))
-            pygame.draw.rect(c, (104, 74, 46), body)
+            pygame.draw.rect(c, (132, 96, 60), body)
             for i in range(4):
                 xx = body.x + P(8) + P(i * 12)
                 pygame.draw.line(c, (80, 56, 34), (xx, body.y + P(6)), (xx, body.bottom), 1)
@@ -2092,8 +2209,9 @@ class App:
                                      (hx + math.cos(a) * P(34), hy - P(6) + math.sin(a) * P(34)), 2)
         elif k == 'trn':
             rx = hx - int(pst * 30 * s)
-            pygame.draw.circle(c, (60, 150, 52), (rx, hy - P(4)), P(17))
-            pygame.draw.rect(c, (40, 110, 40), (rx + P(8), hy - P(11), P(20), P(13)))
+            pygame.draw.circle(c, (78, 184, 66), (rx, hy - P(4)), P(17))
+            pygame.draw.circle(c, (120, 214, 100), (rx - P(5), hy - P(10)), P(6))
+            pygame.draw.rect(c, (56, 140, 52), (rx + P(8), hy - P(11), P(20), P(13)))
             pygame.draw.circle(c, (20, 50, 20), (rx + P(28), hy - P(5)), max(1, P(6)))
             for i in range(4):
                 a = math.pi * (0.55 + 0.22 * i)
@@ -2103,7 +2221,7 @@ class App:
             pygame.draw.circle(c, (230, 230, 210), (rx - P(2), hy - P(10)), max(1, P(4)))
             pygame.draw.circle(c, (10, 10, 10), (rx - P(1), hy - P(10)), max(1, P(2)))
         elif k == 'jed':
-            pygame.draw.circle(c, (110, 50, 140), (hx, hy - P(4)), P(18))
+            pygame.draw.circle(c, (140, 70, 176), (hx, hy - P(4)), P(18))
             for dx, dy in ((-8, -12), (-10, 2), (2, -16)):
                 pygame.draw.circle(c, (120, 200, 60), (hx + P(dx), hy + P(dy)), max(1, P(3)))
             pygame.draw.circle(c, (40, 10, 50), (hx + P(14), hy - P(2)), max(1, P(7 + pst * 20)))
@@ -2113,11 +2231,11 @@ class App:
             head = (hx + P(4), hy - P(10))
             if pt > 0:
                 bul = int(math.sin(t * 8) * P(3))
-                pygame.draw.circle(c, (120, 36, 86), head, P(26) + bul)
+                pygame.draw.circle(c, (160, 50, 110), head, P(26) + bul)
                 pygame.draw.circle(c, (100, 28, 70), (head[0] - P(6), head[1] + P(4)), P(12) - bul)
                 pygame.draw.line(c, (60, 10, 30), (head[0] - P(10), head[1] - P(6)), (head[0] + P(24), head[1] - P(2)), 2)
             else:
-                pygame.draw.circle(c, (130, 40, 90), head, P(24))
+                pygame.draw.circle(c, (170, 56, 118), head, P(24))
                 pygame.draw.polygon(c, (70, 10, 30), [(head[0], head[1]), (head[0] + P(30), head[1] - P(16)),
                                                       (head[0] + P(30), head[1] + P(14))])
                 for i in range(3):
@@ -2144,7 +2262,7 @@ class App:
             pygame.draw.line(c, (90, 60, 30), (cx - P(10), fy - P(4)), (cx - P(18), fy - P(12)), max(1, P(2)))
 
     # ---------------------------------------------------------- asimilovaní
-    def draw_zombie(self, c, k, x, fy, t, fl=0, hpr=1.0, shr=0.0, anim=0.0, jy=0.0, wind=0.0, s=1.0):
+    def draw_zombie(self, c, k, x, fy, t, fl=0, hpr=1.0, shr=0.0, anim=0.0, jy=0.0, wind=0.0, s=1.0, nohead=False):
         if k == 'exe':
             s *= 1.55
 
@@ -2163,6 +2281,8 @@ class App:
             head_c = mix(head_c, (255, 255, 255), 0.5)
         sp = anim * (7 if k == 'bez' else 4.5)
         step = 0 if eating else math.sin(sp)
+        if not eating:
+            fy -= int(abs(math.cos(sp)) * P(2))
         lean = P(8) * facing if k == 'bez' else 0
         hipy = fy - P(28)
         if k == 'dron':
@@ -2186,6 +2306,9 @@ class App:
             pygame.draw.rect(c, (220, 220, 214), (body.centerx - P(5), body.y, P(10), P(4)))
         bob = int(math.sin(anim * 10) * P(3)) if eating else 0
         hx, hy = x + lean + facing * P(2), fy - P(72) + bob
+        if nohead:
+            pygame.draw.circle(c, BLOOD, (x + lean // 2, fy - P(62)), max(2, P(6)))
+            hy = -1000
         pygame.draw.circle(c, head_c, (hx, hy), P(12))
         if k == 'doz':
             pygame.draw.circle(c, (30, 34, 50), (hx, hy - P(3)), P(13), draw_top_left=True, draw_top_right=True)
@@ -2283,6 +2406,9 @@ class App:
         self.birds = []
         self.zdisp = {}
         self.flash = 0.0
+        self.corpses = []
+        self.php = {}
+        self.pshake = {}
 
     def fx(self, kind, x, y, *a):
         P = self.particles
@@ -2302,6 +2428,8 @@ class App:
         elif kind == 'die':
             zk = a[0] if a else 'zak'
             awake = a[1] if len(a) > 1 else 0
+            if zk != 'boss' and len(self.corpses) < 40:
+                self.corpses.append([x, y + CH // 2 - 10, zk, awake, 0.0])
             for _ in range(24):
                 P.append([x + r.uniform(-10, 10), y + r.uniform(-40, 10), r.uniform(-160, 160), r.uniform(-260, -40),
                           r.uniform(0.5, 1.0), 1.0, r.choice([BLOOD, (80, 10, 10), (70, 74, 68)]), r.randint(3, 6), 700, 'sq'])
@@ -2391,6 +2519,13 @@ class App:
         self.birds = [b for b in self.birds if b[0] < W + 60]
         self.shake = max(0.0, self.shake - dt)
         self.flash = max(0.0, self.flash - dt)
+        for cp in self.corpses:
+            cp[4] += dt
+        self.corpses = [cp for cp in self.corpses if cp[4] < 0.9]
+        for key in list(self.pshake):
+            self.pshake[key] -= dt
+            if self.pshake[key] <= 0:
+                del self.pshake[key]
         if self.banner:
             t, col, life = self.banner
             life -= dt
@@ -2429,9 +2564,83 @@ class App:
     def draw_decals(self):
         for d in self.decals:
             k = min(1.0, d[4] / 10)
-            base = (40, 38, 31)
+            base = (52, 49, 40)
             col = mix(base, (20, 18, 16) if len(d) > 5 else (80, 10, 10), k)
             pygame.draw.ellipse(self.canvas, col, (int(d[0] - d[2] / 2), int(d[1] - d[3] / 2), d[2], d[3]))
+
+    def gore_surface(self, lane, col, g):
+        key = (lane, col, g)
+        surf = self.gore_cache.get(key)
+        if surf:
+            return surf
+        if len(self.gore_cache) > 300:
+            self.gore_cache.clear()
+        surf = pygame.Surface((CW, CH), pygame.SRCALPHA)
+        r = random.Random(lane * 131 + col * 17)
+        pile = g >= PILE
+        h = min(48, 16 + g * 3) if pile else 0
+        pygame.draw.ellipse(surf, (80, 12, 12, 200), (8, CH - 26, CW - 16, 18))
+        if pile:
+            mound = (4, CH - 14 - h, CW - 8, h + 10)
+            pygame.draw.ellipse(surf, (86, 40, 34), mound)
+            for i in range(8):
+                pygame.draw.circle(surf, r.choice([(104, 112, 92), (70, 74, 64), (110, 24, 20), (60, 34, 30)]),
+                                   (r.randint(14, CW - 14), CH - 10 - r.randint(4, h)), r.randint(6, 11))
+            pygame.draw.ellipse(surf, (34, 14, 12), mound, 2)
+        skin = [(112, 128, 104), (98, 112, 90), (126, 138, 112)]
+        cloth = [v[0] for v in ZCOL.values()]
+        for i in range(min(g, 16)):
+            px = r.randint(12, CW - 12)
+            py = (CH - 14 - r.randint(0, max(4, h - 4))) if pile else (CH - r.randint(12, 34))
+            kind = r.choice(['arm', 'arm', 'leg', 'head', 'chunk'])
+            ang = r.uniform(0, math.pi * 2)
+            if kind == 'arm':
+                ex, ey = px + math.cos(ang) * 15, py + math.sin(ang) * 6
+                pygame.draw.line(surf, r.choice(skin), (px, py), (ex, ey), 4)
+                pygame.draw.circle(surf, r.choice(skin), (int(ex), int(ey)), 3)
+                pygame.draw.circle(surf, BLOOD, (px, py), 3)
+            elif kind == 'leg':
+                ex, ey = px + math.cos(ang) * 17, py + math.sin(ang) * 6
+                pygame.draw.line(surf, r.choice(cloth), (px, py), (ex, ey), 6)
+                pygame.draw.circle(surf, (30, 26, 24), (int(ex), int(ey)), 4)
+                pygame.draw.circle(surf, BLOOD, (px, py), 3)
+            elif kind == 'head':
+                pygame.draw.circle(surf, r.choice(skin), (px, py), 7)
+                pygame.draw.circle(surf, (170, 30, 20), (px - 2, py - 1), 2)
+                pygame.draw.circle(surf, BLOOD, (px + 3, py + 5), 3)
+            else:
+                pygame.draw.rect(surf, r.choice(cloth), (px - 5, py - 3, 10, 7))
+                pygame.draw.rect(surf, BLOOD, (px - 5, py + 2, 10, 2))
+        if pile:
+            for i in range(4):
+                pygame.draw.circle(surf, (120, 18, 16), (r.randint(10, CW - 10), CH - 12 - r.randint(0, h)), 2)
+        self.gore_cache[key] = surf
+        return surf
+
+    def draw_gore(self, snap):
+        gr = snap.get('gr')
+        if not gr:
+            return
+        for i, g in enumerate(gr):
+            if g:
+                lane, col = divmod(i, COLS)
+                self.canvas.blit(self.gore_surface(lane, col, g), (BX + col * CW, BY + lane * CH))
+
+    def draw_corpses(self):
+        for x, fy, k, awake, t in self.corpses:
+            f = min(1.0, t / 0.45)
+            f = 1 - (1 - f) ** 3
+            s = 1.55 if k == 'exe' else 1.0
+            size = int(150 * s)
+            surf = pygame.Surface((size, size), pygame.SRCALPHA)
+            self.draw_zombie(surf, k, size // 2, size - 10, 0, 2 if awake else 0, 0.4, 0, 0, nohead=True)
+            ang = -86 * f if not awake else 86 * f
+            rs = pygame.transform.rotate(surf, ang)
+            if t > 0.6:
+                rs.set_alpha(int(255 * (1 - (t - 0.6) / 0.3)))
+            v = pygame.math.Vector2(0, size // 2 - 10).rotate(-ang)
+            rr = rs.get_rect(center=(int(x - v.x), int(fy - v.y)))
+            self.canvas.blit(rs, rr)
 
     def draw_birds(self):
         for b in self.birds:
@@ -2468,12 +2677,14 @@ class App:
 
     def packets(self, snap, side):
         if side == 'P':
-            return list(snap['pk']) + ['shovel']
+            return list(snap['pk']) + (['hlid'] if snap.get('gd') else []) + ['shovel']
         return list(snap['zk'])
 
     def pk_ok(self, snap, side, key):
         if key == 'shovel':
             return True
+        if key == 'hlid':
+            return snap.get('gd', 0) > 0 and snap['cp'].get(key, 0) <= 0
         if side == 'P':
             return snap['L'] >= PLANTS[key]['cost'] and snap['cp'].get(key, 0) <= 0
         return (snap['Z'] >= ZOMBIES[key]['cost'] and snap['cz'].get(key, 0) <= 0
@@ -2484,6 +2695,7 @@ class App:
         c.blit(self.bg, (0, 0))
         self.draw_birds()
         self.draw_decals()
+        self.draw_gore(snap)
         t = self.t
         if snap.get('beam'):
             bx, life = snap['beam']
@@ -2530,17 +2742,36 @@ class App:
         for lane in range(LANES):
             fy = lane_fy(lane)
             for p in sorted(plants.get(lane, []), key=lambda q: q[2]):
-                k, _l, col, hp, mhp, pt, pst = p
-                self.draw_plant(c, k, BX + col * CW + CW / 2, fy, t, hp / max(1, mhp), pt, pst)
+                k, _l, col, hp, mhp, pt, pst = p[:7]
+                age = p[7] if len(p) > 7 else 9
+                key = (lane, col)
+                last = self.php.get(key)
+                if last and last[0] == k and hp < last[1] - 0.5:
+                    self.pshake[key] = 0.12
+                self.php[key] = (k, hp)
+                cx = BX + col * CW + CW / 2
+                if key in self.pshake:
+                    cx += math.sin(t * 70) * 3
+                sc = 1.0
+                if age < 0.35:
+                    q = age / 0.35 - 1
+                    sc = max(0.2, 1 + 2.7 * q ** 3 + 1.7 * q ** 2)
+                if k not in ('ostruz', 'mina'):
+                    c.blit(self.shadow, (int(cx) - 28, fy - 8))
+                self.draw_plant(c, k, cx, fy, t, hp / max(1, mhp), pt, pst, s=sc)
             for z in sorted(zs.get(lane, []), key=lambda q: -q[3]):
                 zid, k, _l, x, hp, mhp, sh, msh, fl, anim, jy, wind = z
                 dx = self.zdisp.get(zid, x)
                 if abs(dx - x) > 60:
                     dx = x
+                sh_s = self.shadow_big if k == 'exe' else self.shadow
+                sh_s.set_alpha(max(60, 255 - int(jy * 3)))
+                c.blit(sh_s, (int(dx) - sh_s.get_width() // 2, fy - 4))
                 self.draw_zombie(c, k, dx, fy + 4, t, fl, hp / max(1, mhp), sh / msh if msh else 0, anim, jy, wind)
                 if fl & 16 and random.random() < 0.6:
                     self.particles.append([dx - 34, fy - 48, random.uniform(-180, -120), random.uniform(-20, 30), 0.5, 0.5,
                                            random.choice([(200, 220, 80), (160, 200, 60)]), 3, 60, 'sq'])
+        self.draw_corpses()
         age = min(0.1, self.snap_age)
         for k, lane, x in snap['pr']:
             x = int(x + PROJ_SPD[k] * age)
@@ -2649,24 +2880,43 @@ class App:
                 self.txt("LOPATA", self.f_tiny, DIM, (r.centerx, r.bottom - 10), "center")
                 self.txt("S", self.f_tiny, DIM, (r.x + 4, r.y + 3))
             elif side == 'P':
-                self.draw_plant(c, key, r.centerx, r.y + 62, self.t, s=0.62)
-                self.txt(str(PLANTS[key]['cost']), self.f_smallb, HOPE, (r.centerx, r.bottom - 10), "center")
+                if key == 'hlid':
+                    self.draw_plant(c, key, r.centerx, r.y + 64, self.t, s=0.5)
+                else:
+                    self.draw_plant(c, key, r.centerx, r.y + 62, self.t, s=0.62)
                 cdf = snap['cp'].get(key, 0)
+                secs = snap.get('cs', {}).get(key, 0)
+                afford = key == 'hlid' or snap['L'] >= PLANTS[key]['cost']
+                cost_txt = ("×%d" % snap.get('gd', 0)) if key == 'hlid' else str(PLANTS[key]['cost'])
+                cost_col = HOPE if afford else WARN
             else:
                 self.draw_zombie(c, key, r.centerx, r.y + 70, self.t, 0, 1, 1 if key == 'doz' else 0, self.t,
                                  s=0.36 if key == 'exe' else 0.55)
-                self.txt(str(ZOMBIES[key]['cost']), self.f_smallb, WARN, (r.centerx, r.bottom - 10), "center")
                 cdf = snap['cz'].get(key, 0)
+                secs = snap.get('zs', {}).get(key, 0)
+                afford = snap['Z'] >= ZOMBIES[key]['cost']
+                cost_txt = str(ZOMBIES[key]['cost'])
+                cost_col = (255, 120, 100) if afford else DIM
             if key != 'shovel':
-                if not ok:
-                    c.blit(self.dimpk, r)
-                if cdf > 0:
-                    sh = pygame.Surface((PK_W, int(PK_H * cdf)), pygame.SRCALPHA)
-                    sh.fill((0, 0, 0, 120))
-                    c.blit(sh, r)
                 lk = snap['lk'].get(key)
+                if cdf > 0:
+                    sh = pygame.Surface((PK_W, max(1, int(PK_H * cdf))), pygame.SRCALPHA)
+                    sh.fill((0, 0, 0, 150))
+                    c.blit(sh, r)
+                if not afford:
+                    lite = pygame.Surface((PK_W, PK_H), pygame.SRCALPHA)
+                    lite.fill((0, 0, 0, 60))
+                    c.blit(lite, r)
+                pygame.draw.rect(c, (22, 24, 20), (r.x + 1, r.bottom - 19, r.w - 2, 18))
+                self.txt(cost_txt, self.f_smallb, cost_col, (r.centerx, r.bottom - 10), "center")
                 if lk:
-                    self.txt("%ds" % lk, self.f_smallb, AMBER, r.center, "center")
+                    self.txt("%ds" % lk, self.f_med, AMBER, (r.centerx, r.centery - 6), "center")
+                elif cdf > 0 and secs > 0:
+                    num = str(int(math.ceil(secs)))
+                    self.txt(num, self.f_med, (0, 0, 0), (r.centerx + 2, r.centery - 4), "center")
+                    self.txt(num, self.f_med, (255, 255, 255), (r.centerx, r.centery - 6), "center")
+                if ok:
+                    pygame.draw.rect(c, ACID, r, 2)
                 self.txt(str(i + 1), self.f_tiny, DIM, (r.x + 4, r.y + 3))
             if self.sel == key:
                 pygame.draw.rect(c, AMBER, r.inflate(4, 4), 2)
@@ -2678,7 +2928,8 @@ class App:
             cx = ix + iw // 2
             if kind == 'sp':
                 self.txt("%d · %s" % (snap['lvl'] + 1, LEVELS[snap['lvl']]['name']), self.f_normb, TEXT, (cx, 40), "center")
-                self.txt("probuzeno: %d" % snap['aw'], self.f_small, HOPE, (cx, 66), "center")
+                self.txt("probuzeno: %d" % snap['aw'], self.f_small, HOPE, (cx, 64), "center")
+                self.txt(DIFFS[snap.get('df', 'normal')]['name'], self.f_tiny, DIM, (cx, 84), "center")
             elif kind == 'pvp':
                 left = max(0, (snap['dur'] or 0) - snap['t'])
                 self.txt("%d:%02d" % (left // 60, left % 60), self.f_med, TEXT, (cx, 44), "center")
@@ -2686,7 +2937,8 @@ class App:
                 self.txt("TY: " + ("KYTKY" if side == 'P' else "ZOMBIE"), self.f_tiny, ACID if side == 'P' else WARN, (cx, 86), "center")
             elif kind == 'endless':
                 self.txt("VLNA %d" % snap['wave'], self.f_med, TEXT, (cx, 44), "center")
-                self.txt("rekord: %d" % self.save.get('endless', 0), self.f_small, DIM, (cx, 72), "center")
+                self.txt("rekord: %d · %s" % (self.save.get('endless', 0), DIFFS[snap.get('df', 'normal')]['name']),
+                         self.f_small, DIM, (cx, 72), "center")
             elif kind == 'puzzle':
                 self.txt("SEMÍNKA", self.f_tiny, DIM, (cx, 30), "center")
                 for i, ok in enumerate(snap['sd']):
@@ -2789,7 +3041,7 @@ class App:
                     except Exception:
                         pass
                     continue
-                if e.key == pygame.K_m and self.state not in ("join",):
+                if e.key == pygame.K_m and self.state not in ("join", "menu"):
                     self.snd.toggle_music()
                     continue
             getattr(self, "ev_" + self.state)(e)
@@ -2817,9 +3069,15 @@ class App:
         elif e.key == pygame.K_DOWN:
             self.menu_i = (self.menu_i + 1) % len(MENU)
             self.snd.play('tick')
+        elif self.menu_i == 1 and e.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_LEFT, pygame.K_RIGHT):
+            d = -1 if e.key == pygame.K_LEFT else 1
+            i = DIFF_ORDER.index(self.save.get('diff', 'normal'))
+            self.save['diff'] = DIFF_ORDER[(i + d) % len(DIFF_ORDER)]
+            write_save(self.save)
+            self.snd.play('select')
         elif e.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
             self.snd.play('select')
-            [lambda: self.goto("map"), lambda: self.goto("host_setup"), self.start_join,
+            [lambda: self.goto("map"), None, lambda: self.goto("host_setup"), self.start_join,
              lambda: self.goto("atlas"), self.do_quit][self.menu_i]()
         elif e.key == pygame.K_ESCAPE:
             self.do_quit()
@@ -2848,14 +3106,22 @@ class App:
         self.glitch_text("ZÁHON", self.f_huge, (W // 2, 150), ACID, amt=4)
         self.txt("poslední skleník", self.f_med, HOPE, (W // 2, 212), "center")
         for i, m in enumerate(MENU):
-            y = 290 + i * 48
+            if i == 1:
+                m = "OBTÍŽNOST: < %s >" % DIFFS[self.save.get('diff', 'normal')]['name']
+            y = 270 + i * 46
             sel = i == self.menu_i
             if sel:
                 pygame.draw.rect(c, (30, 40, 14), (W // 2 - 230, y - 6, 460, 38))
                 pygame.draw.rect(c, ACID, (W // 2 - 230, y - 6, 460, 38), 1)
             self.txt(m, self.f_normb, ACID if sel else TEXT, (W // 2, y + 13), "center")
         self.txt("Zahradník: " + self.name, self.f_small, DIM, (18, 48))
-        self.txt("↑↓ výběr · ENTER potvrdit · M hudba · F11 celá obrazovka", self.f_small, DIM, (W // 2, H - 52), "center")
+        if self.menu_i == 1:
+            dd = self.save.get('diff', 'normal')
+            tip = {'lehka': "Slabší a pomalejší asimilovaní, víc světla na začátku.",
+                   'normal': "Tak, jak to Ministerstvo naplánovalo.",
+                   'kruta': "Silnější a rychlejší asimilovaní. KOMBAJN sklízí mrtvá těla a opravuje se jimi."}[dd]
+            self.txt(tip, self.f_small, HOPE, (W // 2, 560), "center")
+        self.txt("↑↓ výběr · ENTER potvrdit · ←→ obtížnost · F11 celá obrazovka", self.f_small, DIM, (W // 2, H - 52), "center")
         if self.banner:
             self.txt(self.banner[0], self.f_normb, self.banner[1], (W // 2, 540), "center")
         self.ticker()
@@ -2983,7 +3249,7 @@ class App:
 
     # ================================================================ HRA (lokální)
     def start_level(self, n):
-        self.world = World('sp', level=n, seed=random.randrange(1 << 30))
+        self.world = World('sp', level=n, seed=random.randrange(1 << 30), diff=self.save.get('diff', 'normal'))
         self._start_local('P')
 
     def start_puzzle(self):
@@ -2991,7 +3257,7 @@ class App:
         self._start_local('Z')
 
     def start_endless(self):
-        self.world = World('endless', seed=random.randrange(1 << 30))
+        self.world = World('endless', seed=random.randrange(1 << 30), diff=self.save.get('diff', 'normal'))
         self._start_local('P')
 
     def _start_local(self, side):
@@ -3277,8 +3543,8 @@ class App:
         self.header("LAN // NOVÁ HRA")
         self.glitch_text("SOUBOJ O SKLENÍK", self.f_big, (W // 2, 110), TEXT)
         m = PVP_MODES[PVP_ORDER[self.hs_mode]]
-        rows = [("MÓD", "◀ " + m['name'] + " ▶"),
-                ("TVOJE STRANA", "◀ " + ("KYTKY" if self.hs_side == 0 else "ZOMBIE") + " ▶"),
+        rows = [("MÓD", "< " + m['name'] + " >"),
+                ("TVOJE STRANA", "< " + ("KYTKY" if self.hs_side == 0 else "ZOMBIE") + " >"),
                 ("", "ZALOŽIT HRU")]
         for i, (lab, val) in enumerate(rows):
             y = 200 + i * 70

@@ -21,6 +21,26 @@ PŘÍBĚH (5 úrovní)
   5 KOMBAJN   — boss přes tři řady
   Po dohrání se odemkne tajná úroveň a Nekonečná noc.
 
+OBTÍŽNOST (v hlavním menu, šipky ←→)
+  LEHKÁ     — slabší a pomalejší asimilovaní, víc světla
+  NORMÁLNÍ  — výchozí
+  KRUTÁ     — silnější a rychlejší asimilovaní, KOMBAJN sklízí těla
+
+TĚLA NA POLI
+  Části mrtvých zůstávají ležet do konce kola a zpomalují další
+  asimilované (každá o 10 %, nejvýš o 40 %). Od 5 částí vzniká
+  HROMADA: přelézt ji trvá 2 s, ale kdo stojí nahoře, toho trny
+  netrefí. Kořenová mina těla rozmetá na okolní políčka.
+
+PROBUZENÁ HLÍDKA
+  Když probuzený odejde z pole, vrátí se jako hlídka (max. 2).
+  Zasadíš ji zdarma jako rostlinu; stojí a pere se s asimilovanými.
+
+EXEKUTOR
+  Každou rostlinu před sebou po 1,8 s nápřahu rozdrtí (i Pařez).
+  Nejlépe na něj: Kořenové miny (1800), Masožravka (800),
+  Jedovatka (zpomalí i nápřah) a hodně trnometů v jedné řadě.
+
 TAJEMSTVÍ
   - Pampeliška naděje umí pylem PROBUDIT zraněného asimilovaného.
     Probuzený se otočí, bojuje za tebe a pak odejde hledat rodinu.
