@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galaktická civilizace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+
+<header id="top">
+  <div class="brand"><span id="title"></span><small><em class="ver">v0.5 alfa</em> · <span id="date"></span></small></div>
+  <div id="speeds"></div>
+  <div class="search"><input id="search" type="text" autocomplete="off" spellcheck="false"><div id="searchRes"></div></div>
+  <div id="stats"></div>
+  <div class="menu">
+    <button id="btnQuality" data-act="quality" class="q"></button>
+    <button id="btnHelp" data-act="help"></button>
+    <button id="btnSave" data-act="save"></button>
+    <button id="btnNew" data-act="new"></button>
+    <button id="lang" data-act="lang"></button>
+  </div>
+</header>
+
+<aside id="left" class="panel"><div id="info"></div></aside>
+
+<aside id="right" class="panel">
+  <nav class="tabs"></nav>
+  <div id="tabBody"></div>
+</aside>
+
+<footer id="bottom">
+  <div id="scale"></div>
+  <div id="quick"></div>
+</footer>
+<div id="questCard" class="panel"></div>
+<div id="empty"></div>
+<div id="modal" class="panel"></div>
+<div id="toasts"></div>
+<div id="tip"></div>
+<div id="powerTip" class="panel"></div>
+<div id="help" class="panel"></div>
+<div id="err"></div>
+
+<script src="js/util.js"></script>
+<script src="js/i18n.js"></script>
+<script src="js/data-stars.js"></script>
+<script src="js/data-exotic.js"></script>
+<script src="js/galaxy.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/quests.js"></script>
+<script src="js/shaders.js"></script>
+<script src="js/render.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
