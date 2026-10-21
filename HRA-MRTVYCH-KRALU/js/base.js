@@ -47,7 +47,23 @@ const TIPS = [
   'Klávesy <b>1–0</b> vybírají karty, pravé tlačítko myši výběr zruší. <b>M</b> ztlumí zvuk.',
   'Alfa v Mlze je silná, ale kdo ji zabije, dostane 🧪 a <b>legendární bednu</b>.',
 ];
+// Faction tips (2 each): shown in the lobby rotation when the faction is chosen and in a match for the own faction.
+const FAC_TIPS = {
+  prez: [
+    'Přeživší: <b>Ostnatá zeď</b> vrací útočníkům zblízka 35 % poškození a Zeď stojí jen 10 🔩.',
+    'Přeživší: <b>Dílna</b> vyrábí 🔩 (nejvýš dvě). Král s perkem Kovář opraví za 🔩 dvakrát víc.',
+  ],
+  korp: [
+    'Korporace: <b>EMP</b> vypne soupeřovy věže v oblasti 3×3 na 4 s. Použij ho před útokem.',
+    'Korporace: <b>Tesla cívku</b> máš už od Doby I a první stupeň výzkumu stojí jen 1 🧪.',
+  ],
+  kult: [
+    'Kult: <b>Mor</b> promění padlé nepřátele v tvé Chodce. <b>Nekromant</b> to umí také.',
+    'Kult: <b>Hnízdo</b> posílá z Mlhy zombie na soupeře a tvoje zombie ti neublíží.',
+  ],
+};
 const STEPS = [
+
   ['gen', 'Postav Generátor (klávesa 1)'],
   ['tower', 'Postav obrannou věž blízko Mlhy'],
   ['scout', 'Prozkoumej soupeře (Hláska, dron, jednotky)'],
@@ -66,6 +82,10 @@ function loadOpt() {
   if (![0, 0.4, 1].includes(o.shake)) o.shake = 1;
   return o;
 }
+// Event bus (SPEC 3.5): modules register with on(), ui.js emits 'defs' 'lobby' 'start' 'snap' 'end' and 'm:<t>' for unhandled messages.
+const BUS = {};
+function on(ev, fn) { (BUS[ev] = BUS[ev] || []).push(fn); }
+function emit(ev, ...a) { for (const f of BUS[ev] || []) { try { f(...a); } catch (e) { console.error(ev, e); } } }
 const S = {
   ws: null, defs: null, research: null, branches: null, cmds: null, base: [], pool: [], recommended: [], deckSize: 8,
   rarity: [], dobaAt: [2, 5], lobby: null, deck: [], tips: true, ready: false, kicked: false, oldServer: false,
@@ -75,12 +95,36 @@ const S = {
   slots: [], pick: null, sel: null, hover: null, barHover: null, inGame: false, ending: false, sideHtml: '', resHtml: '', resOpen: false,
   keys: {}, inp: { mx: 0, my: 0, b: false, r: false, d: false, u: false }, kp: null, seenEnemy: false, steps: new Set(), shownTips: new Set(),
   choose: null, mouse: null, opt: null,
+  // 1.0: game type, solo flag, bar kit, map (id, name, theme) and the catalogs from the 1.0 'defs' message
+  type: 'souboj', solo: false, tut: false, kit: [], map: null, theme: 'ruiny', paused: false,
+  types: [], maps: [], diffs: [], puzzles: [], squad: [20], soloMax: 2, meProf: null,
+  // 1.0 factions: catalog from 'defs' (fdefs, facPool, facCosts, facRec) and the own side's data from 'start' (facs, costs, rcost, perk, fdoba)
+  facs: ['bez', 'bez'], fdefs: null, facPool: {}, facCosts: {}, facRec: {}, costs: null, rcost: null, perk: null, fdoba: null,
 };
 const K = () => S.defs.kral;
+const FAC_IDS = ['bez', 'prez', 'korp', 'kult'];
+// Doba overrides per faction. The server sends them in start.doba when it knows (or in defs.factions[f].doba), this table is the fallback.
+const FAC_DOBA = { korp: { tesla: 1 } };
+const facInfo = f => (S.fdefs && S.fdefs[f]) || null;
+const facName = f => (facInfo(f) ? facInfo(f).name : f === 'bez' ? 'Bez frakce' : f);
+// Doba needed for a card: the faction override, else the card's own. fac defaults to the own side's faction in a match.
+function dobaOf(k, fac) {
+  const d = S.defs[k] || {};
+  let o;
+  if (fac) { const i = facInfo(fac); o = (i && i.doba) || FAC_DOBA[fac]; }
+  else { const f = S.facs[S.side] || 'bez', i = facInfo(f); o = S.fdoba || (i && i.doba) || FAC_DOBA[f]; }
+  return o && o[k] !== undefined ? o[k] : d.doba || 0;
+}
+const rcostOf = id => (S.rcost && S.rcost[id] !== undefined ? S.rcost[id] : S.research[id].cost);
+// walls (Zeď, Ostnatá zeď) have material levels instead of the A/B path choice at level 3
+const isWallKind = k => !!(S.defs && S.defs[k] && S.defs[k].levels);
+// a command (Útok!) can need a higher Doba than the first one
+const cmdDoba = c => c.doba || 0;
+
 const roman = n => ['I', 'II', 'III'][Math.max(1, Math.min(3, n)) - 1];
 // Must match VERSION in server.py. The server reads this page from disk on every load, so an updated
 // page can meet a server process that was started before the update and speaks the old protocol.
-const CLIENT_VER = '0.5';
+const CLIENT_VER = '0.9';
 
 /* ---------------- small helpers ---------------- */
 function load(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } }

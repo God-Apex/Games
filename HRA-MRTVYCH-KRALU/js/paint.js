@@ -315,6 +315,7 @@ function paintSkull(g, x, y, r) {
 }
 function paintBuilding(g, kind, s, lvl, path, f, bell) {
   if (kind === 'zed') return paintWall(g, s, lvl);
+  if (kind === 'ostnata') return paintSpikeWall(g, s, lvl);
   if (kind === 'mina') return paintMine(g, s);
   paintSlab(g, s, lvl);
   (BUILD[kind] || BUILD.kulomet)(g, s, lvl, path, f, bell);
@@ -323,11 +324,13 @@ function paintBuilding(g, kind, s, lvl, path, f, bell) {
 // Screen facing of a side: own things face right (toward the enemy), enemy things face left.
 const sideFace = side => side === S.side ? 1 : -1;
 // variant: '' | 'ghost' (sepia sketch with "?", drawn above the fog) | 'hidden' (half alpha body, dashed full-alpha rim)
-function sprBuilding(kind, side, lvl, path, variant = '', face = sideFace(side)) {
+//          | 'off' (EMP: desaturated; render.js adds the crackle lines)
+function sprBuilding(kind, side, lvl, path, variant = '', face = sideFace(side), fac = facOf(side)) {
   const v = variant === true ? 'ghost' : variant || '', f = kind === 'plamen' || kind === 'hlaska' ? face : 1;
-  return spr(`B|${kind}|${side}|${lvl}|${path || ''}|${v}|${f}`, 1.6, g => {
+  return spr(`B|${kind}|${side}|${lvl}|${path || ''}|${v}|${f}|${fac}`, 1.6, g => {
     paintBuilding(g, kind, side, lvl, path, f, v === 'ghost');
-    if (v === 'ghost') sketchify(g); else if (v === 'hidden') hiddenize(g, side);
+    paintFacTrim(g, 'b', kind, side, fac);
+    if (v === 'ghost') sketchify(g); else if (v === 'hidden') hiddenize(g, side); else if (v === 'off') desaturate(g);
   }, [-0.46, -0.66, 0.46, 0.4]);
 }
 // Rotating weapon part (crossbow / arbalest), pointing to +x. Pivot = sprite centre; place it at BARREL_OY above the cell centre.
@@ -410,7 +413,7 @@ const PIECE = {
     g.restore();
   },
 };
-const ASYM_PIECES = new Set(['jezdec', 'medik', 'saboter']);
+const ASYM_PIECES = new Set(['jezdec', 'medik', 'saboter', 'mrchozrout', 'nekromant']);
 function pieceBase(g, s, rx) {
   groundShadow(g, rx + 0.04, 0.3);
   ellPath(g, 0, 0.25, rx, rx * 0.34); g.fillStyle = skinOf(s).tLo; g.fill();
@@ -427,7 +430,7 @@ function paintLaurel(g, x, y) {
   g.restore();
 }
 function paintPiece(g, kind, s, vet, f) {
-  const big = kind === 'obrnenec' || kind === 'dama', rx = big ? 0.27 : 0.24;
+  const rx = BIG_PIECES.has(kind) ? 0.27 : 0.24;
   g.save(); g.translate(0, 0.3); g.scale(1.15, 1.15); g.translate(0, -0.3);
   pieceBase(g, s, rx);
   if (vet) { ellPath(g, 0, 0.215, rx + 0.03, (rx + 0.03) * 0.32); g.strokeStyle = PAL.giltHi; g.lineWidth = 0.018; g.stroke(); }
@@ -435,13 +438,16 @@ function paintPiece(g, kind, s, vet, f) {
   if (vet) paintLaurel(g, -0.21, -0.24);
   g.restore();
 }
-function sprUnit(kind, side, vet, face = 1, variant = '') {
+function sprUnit(kind, side, vet, face = 1, variant = '', fac = facOf(side)) {
   const f = ASYM_PIECES.has(kind) ? face : 1;
-  return spr(`U|${kind}|${side}|${vet ? 1 : 0}|${f}|${variant}`, 1.1, g => { paintPiece(g, kind, side, !!vet, f); if (variant === 'hidden') hiddenize(g, side); }, [-0.4, -0.52, 0.4, 0.4]);
+  return spr(`U|${kind}|${side}|${vet ? 1 : 0}|${f}|${variant}|${fac}`, 1.1, g => {
+    paintPiece(g, kind, side, !!vet, f); paintFacTrim(g, 'u', kind, side, fac, f);
+    if (variant === 'hidden') hiddenize(g, side);
+  }, [-0.4, -0.52, 0.4, 0.4]);
 }
 
 /* ---------------- the King ---------------- */
-function paintKing(g, s, f) {
+function paintKing(g, s, f, fac = 'bez') {
   const m = skinOf(s);
   g.save(); g.translate(0, 0.3); g.scale(1.2, 1.2); g.translate(0, -0.3);
   pieceBase(g, s, 0.29);
@@ -451,8 +457,7 @@ function paintKing(g, s, f) {
   g.beginPath(); g.moveTo(-0.13, 0.2); g.bezierCurveTo(-0.11, 0.02, -0.07, -0.08, -0.07, -0.16); g.lineTo(0.07, -0.16); g.bezierCurveTo(0.07, -0.08, 0.11, 0.02, 0.13, 0.2); g.closePath(); solidFill(g, s, -0.16, 0.2);
   circPath(g, 0, -0.24, 0.1); solidFill(g, s, -0.34, -0.14);
   g.save(); g.scale(f, 1);
-  g.beginPath(); g.moveTo(0.15, 0.16); g.lineTo(0.19, -0.2); g.strokeStyle = SPR_INK; g.lineWidth = 0.05; g.stroke(); g.strokeStyle = PAL.gilt; g.lineWidth = 0.028; g.stroke();
-  circPath(g, 0.195, -0.23, 0.04); g.fillStyle = linGrad(g, 0, -0.27, 0, -0.19, ['#fff0b8', '#d8b45a', '#8a6a2a']); g.fill(); g.strokeStyle = GILT_INK; g.lineWidth = 0.014; g.stroke();
+  paintSceptre(g, fac);
   circPath(g, 0.155, -0.02, 0.035); solidFill(g, s, -0.06, 0.02, 0.016);
   g.restore();
   g.beginPath(); g.moveTo(-0.05 + f * 0.01, -0.25); g.lineTo(-0.02 + f * 0.01, -0.25); g.moveTo(0.02 + f * 0.01, -0.25); g.lineTo(0.05 + f * 0.01, -0.25); g.strokeStyle = m.rim || m.ink; g.lineWidth = 0.03; g.stroke();
@@ -469,7 +474,7 @@ function paintCrown(g, x, y, k) {
   gemAt(g, 0, 0.035, 0.03, PAL.rubric);
   g.restore();
 }
-function sprKing(side, face = 1) { return spr(`K|${side}|${face}`, 1.4, g => paintKing(g, side, face), [-0.38, -0.66, 0.38, 0.42]); }
+function sprKing(side, face = 1, fac = facOf(side)) { return spr(`K|${side}|${face}|${fac}`, 1.4, g => { paintKing(g, side, face, fac); paintFacTrim(g, 'k', 'kral', side, fac, face); }, [-0.38, -0.66, 0.38, 0.42]); }
 
 /* ---------------- zombies ---------------- */
 const ZR = { chodec: 0.28, bezec: 0.22, obr: 0.38, alfa: 0.46 };
@@ -500,12 +505,14 @@ function zombieFrame(g, kind, frame, face, pass) {
   }
   g.restore();
 }
-function sprZombie(kind, frame = 0, face = 1) {
-  const r = ZR[kind] || 0.28, k = ZR[kind] ? kind : 'chodec', fr = frame & 3;
-  return spr(`Z|${k}|${fr}|${face}`, r * 2 + 0.8, g => {
+// own: -1 wild, 0/1 = owned by that side (flag 2048): a 2 px collar in the owner's enamel plus the owner's emblem body on the shoulder.
+function sprZombie(kind, frame = 0, face = 1, own = -1) {
+  const r = ZR[kind] || 0.28, k = ZR[kind] ? kind : 'chodec', fr = frame & 3, o = own === 0 || own === 1 ? own : -1;
+  return spr(`Z|${k}|${fr}|${face}|${o}`, r * 2 + 0.8, g => {
     zombieFrame(g, k, fr, face, 'body');
     keyline(g, Math.max(1.5, CS * DPR * 0.032), PAL.zInk);
     zombieFrame(g, k, fr, face, 'eye');
+    if (o >= 0) zombieCollar(g, k, fr, face, o);
     paintBehind(g, () => groundShadow(g, 0.2 * ZSCALE[k], 0.3));
     if (k === 'alfa') paintBehind(g, () => { const au = g.createRadialGradient(0, -0.1, 0.05, 0, -0.1, 0.8); au.addColorStop(0, 'rgba(194,59,46,0.55)'); au.addColorStop(1, 'rgba(194,59,46,0)'); g.fillStyle = au; g.fillRect(-0.86, -0.86, 1.72, 1.72); });
   });
@@ -565,8 +572,9 @@ function sprDrone(side, frame = 0) {
 // Per-side shape emblem, the same shapes as the HUD's EMB: A heater shield with a crescent, B roundel with a flame (works without colour).
 const EMB_PATH = [['M2 1.5h16v8.5c0 5.6-3.7 8.8-8 10.5-4.3-1.7-8-4.9-8-10.5z', 'M12.4 5.6A4.6 4.6 0 0 0 12.4 14.8 5.8 5.8 0 0 1 12.4 5.6z'],
   ['M18.6 11a8.6 8.6 0 1 1-17.2 0 8.6 8.6 0 1 1 17.2 0z', 'M10 4.6c.7 2.5 3.7 3.7 3.7 7.2a3.7 3.7 0 0 1-7.4 0c0-1.7.8-2.7 1.8-3.4-.1 1.3.4 2.3 1.2 2.7-.4-2.3.2-4.5.7-6.5z']];
-function paintEmblem(g, s, r = 0.2) {
-  const m = skinOf(s), [body, charge] = EMB_PATH[s === 1 ? 1 : 0].map(d => new Path2D(d));
+// fac: the faction charge replaces the crescent / flame (FAC §6); the body and the charge colour stay per side.
+function paintEmblem(g, s, r = 0.2, fac) {
+  const m = skinOf(s), [body, charge0] = EMB_PATH[s === 1 ? 1 : 0].map(d => new Path2D(d)), fc = facCharge(fac), charge = fc || charge0;
   g.save(); g.scale(r / 9, r / 9); g.translate(-10, -11);
   g.fillStyle = linGrad(g, 0, 2, 0, 20, [m.tHi, m.t, m.tLo]); g.fill(body);
   g.strokeStyle = m.ink; g.lineWidth = 1.6; g.stroke(body);
@@ -584,19 +592,19 @@ function paintBanner(g, s, x, y, w, h) {
   g.beginPath(); g.moveTo(l - 0.05, y); g.lineTo(r + 0.05, y); g.strokeStyle = SPR_INK; g.lineWidth = 0.06; g.stroke(); g.strokeStyle = PAL.gilt; g.lineWidth = 0.03; g.stroke();
   for (const d of [l - 0.05, r + 0.05]) { circPath(g, d, y, 0.03); g.fillStyle = PAL.giltHi; g.fill(); g.strokeStyle = GILT_INK; g.lineWidth = 0.012; g.stroke(); }
 }
-function paintThrone(g, s) {
+function paintThrone(g, s, fac) {
   const m = skinOf(s);
   groundShadow(g, 0.42, 0.78);
   poly(g, [[-0.32, 0.76], [-0.32, -0.45], [-0.24, -0.8], [0, -1.0], [0.24, -0.8], [0.32, -0.45], [0.32, 0.76]]); solidFill(g, s, -1.0, 0.76, 0.035);
   paintBanner(g, s, 0, -0.64, 0.42, 0.78);
-  g.save(); g.translate(0, -0.3); paintEmblem(g, s, 0.14); g.restore();
+  g.save(); g.translate(0, -0.3); paintEmblem(g, s, 0.14, fac); g.restore();
   rrect(g, -0.42, 0.2, 0.84, 0.2, 0.04); solidFill(g, s, 0.2, 0.4, 0.03);
   rrect(g, -0.36, 0.4, 0.72, 0.36, 0.03); solidFill(g, s, 0.4, 0.76, 0.03);
   g.fillStyle = m.t; g.fillRect(-0.34, 0.5, 0.68, 0.05);
   for (const d of [-1, 1]) paintSkull(g, d * 0.32, -0.54, 0.075);
   paintCrown(g, 0, -0.98, 0.9);
 }
-function sprThrone(side) { return spr('TH|' + side, 2.4, g => paintThrone(g, side)); }
+function sprThrone(side, fac = facOf(side)) { return spr(`TH|${side}|${fac}`, 2.4, g => { paintThrone(g, side, fac); paintFacTrim(g, 'th', 'throne', side, fac); }); }
 function paintRubble(g, seed) {
   groundShadow(g, 0.42, 0.3);
   for (let i = 0; i < 5; i++) {
@@ -611,20 +619,23 @@ function sprRubble(seed) { return spr('RB|' + seed, 1, g => paintRubble(g, seed)
 
 /* ---------------- live (per-frame) building details ---------------- */
 // Draw with g already transformed to the building's cell space (origin = cell centre, 1 unit = 1 cell); the caller's alpha is respected.
-function liveFlame(g, x, y, s, now, seed) {
+// cols = [halo, outer, core]; the Kult's Generátor burns grave-light (FAC §6).
+const FLAME_COLS = [PAL.candle, '#ff9a3c', PAL.flame], GRAVE_COLS = ['#e6f2c8', '#9fbf7a', '#f4ffe6'];
+function liveFlame(g, x, y, s, now, seed, cols = FLAME_COLS) {
   const f = 0.85 + 0.15 * Math.sin(now / 90 + seed) + 0.08 * Math.sin(now / 37 + seed * 3), sw = Math.sin(now / 130 + seed * 2) * s * 0.15, A = g.globalAlpha;
-  g.globalAlpha = A * 0.5; g.drawImage(softSpr(PAL.candle), x - s * 3, y - s * 3.4, s * 6, s * 6); g.globalAlpha = A;
+  g.globalAlpha = A * 0.5; g.drawImage(softSpr(cols[0]), x - s * 3, y - s * 3.4, s * 6, s * 6); g.globalAlpha = A;
   g.beginPath(); g.moveTo(x + sw, y - s * 1.6 * f); g.quadraticCurveTo(x + s * 0.7, y - s * 0.2, x, y + s * 0.3); g.quadraticCurveTo(x - s * 0.7, y - s * 0.2, x + sw, y - s * 1.6 * f);
-  g.fillStyle = '#ff9a3c'; g.fill();
+  g.fillStyle = cols[1]; g.fill();
   g.beginPath(); g.moveTo(x + sw * 0.6, y - s * 0.9 * f); g.quadraticCurveTo(x + s * 0.35, y - s * 0.05, x, y + s * 0.2); g.quadraticCurveTo(x - s * 0.35, y - s * 0.05, x + sw * 0.6, y - s * 0.9 * f);
-  g.fillStyle = PAL.flame; g.fill();
+  g.fillStyle = cols[2]; g.fill();
 }
 function liveBuilding(g, e, now) {
   const k = e.kind, f = sideFace(e.side), seed = (e.id || 0) * 1.7, A = g.globalAlpha;
   g.save();
   if (k === 'gen') {
     g.globalCompositeOperation = 'lighter';
-    for (const [x, h, w] of candleLayout(e.lvl, e.path)) liveFlame(g, x, 0.07 - h, w * 0.5, now, seed + x * 10);
+    const cols = facOf(e.side) === 'kult' ? GRAVE_COLS : FLAME_COLS;
+    for (const [x, h, w] of candleLayout(e.lvl, e.path)) liveFlame(g, x, 0.07 - h, w * 0.5, now, seed + x * 10, cols);
   } else if (k === 'hlaska') {
     const b = e.path === 'B', r = b ? 1.7 : 1.3, w = b ? 0.45 : 0.3, a = (f > 0 ? 0 : Math.PI) + Math.sin(now / 1400 + seed) * 0.3, y = b ? -0.34 : -0.3;
     g.globalCompositeOperation = 'lighter';
@@ -805,7 +816,7 @@ const MOTIF = {
 // Motif for any id: card/command/resource painters, otherwise the board sprite painters in the neutral icon skin.
 function paintMotif(g, id, col) {
   if (MOTIF[id]) return MOTIF[id](g, col);
-  const d = S.defs && S.defs[id], cat = d ? d.cat : PIECE[id] ? 'u' : ZR[id] ? 'z' : BUILD[id] || id === 'zed' || id === 'mina' ? 'b' : '';
+  const d = S.defs && S.defs[id], cat = d ? d.cat : PIECE[id] ? 'u' : ZR[id] ? 'z' : BUILD[id] || id === 'zed' || id === 'mina' || id === 'ostnata' ? 'b' : '';
   if (cat === 'b') {
     paintBuilding(g, id, 2, 1, '', 1, true);
     if (BARREL_OY[id] !== undefined) { g.save(); g.translate(0, BARREL_OY[id]); g.scale(1, 0.75); g.rotate(-0.35); paintBarrel(g, id, 2, ''); g.restore(); }
@@ -858,3 +869,356 @@ function sprIcon(id, col, size, medal = false) {
     g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(motifCanvas(id, col, box, medal ? null : col || SPR_INK), (P - box) / 2, (P - box) / 2); g.restore();
   });
 }
+
+/* ---------------- factions (FAC §6): emblem charges, accents, trim, faction sprites ---------------- */
+// Charge builders in the 20×22 emblem box (centre 10,11). Solids wind one way and holes the other, so a nonzero fill cuts the holes.
+function chPoly(pts, hole = false) {
+  let a = 0;
+  for (let i = 0; i < pts.length; i++) { const [x0, y0] = pts[i], [x1, y1] = pts[(i + 1) % pts.length]; a += x0 * y1 - x1 * y0; }
+  if ((a < 0) !== hole) pts = pts.slice().reverse();
+  return 'M' + pts.map(([x, y]) => x.toFixed(2) + ' ' + y.toFixed(2)).join('L') + 'z';
+}
+function chRect(x0, y0, x1, y1) { return [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]; }
+function chCirc(x, y, r, n = 16) { return Array.from({ length: n }, (_, i) => [x + Math.cos(i / n * TAU) * r, y + Math.sin(i / n * TAU) * r]); }
+function chRot(pts, a, cx = 10, cy = 11) { const c = Math.cos(a), s = Math.sin(a); return pts.map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]); }
+function chMirror(pts) { return pts.map(([x, y]) => [20 - x, y]); }
+const KULT_HORN = [[7.0, 8.2], [5.6, 7.6], [5.0, 6.4], [5.4, 5.0], [6.0, 6.2], [7.0, 6.6], [8.2, 6.7]];
+const FAC_ART = {
+  bez: { charge: null, acc: null, acc2: null },
+  // crossed hammer and crowbar
+  prez: { acc: '#9a6a3c', acc2: '#5a5d63', charge: [
+    chRot(chRect(-0.75, -3.4, 0.75, 5.6), 0.7), chRot(chRect(-3, -5.6, 3, -3.1), 0.7),
+    chRot(chRect(-0.65, -5.2, 0.65, 4.4), -0.7),
+    chRot([[-0.65, 3.8], [0.65, 3.8], [0.65, 5.2], [-0.6, 6.5], [-2.8, 6.4], [-2.8, 5.3], [-1.1, 5.3], [-0.65, 4.8]], -0.7),
+    chRot([[-0.65, -4.6], [-1.5, -6.3], [-0.3, -5.5], [0, -5], [0.3, -5.5], [1.5, -6.3], [0.65, -4.6]], -0.7),
+  ].map(p => chPoly(p)).join('') },
+  // lightning bolt in a hexagon
+  korp: { acc: '#aab4be', acc2: '#e9f2ff', charge: [
+    chPoly(Array.from({ length: 6 }, (_, i) => [10 + Math.cos(i / 6 * TAU - Math.PI / 2) * 6.3, 10.5 + Math.sin(i / 6 * TAU - Math.PI / 2) * 6.3])),
+    chPoly(Array.from({ length: 6 }, (_, i) => [10 + Math.cos(i / 6 * TAU - Math.PI / 2) * 5, 10.5 + Math.sin(i / 6 * TAU - Math.PI / 2) * 5]), true),
+    chPoly([[10.9, 6.6], [7.6, 11.3], [9.7, 11.3], [9.2, 14.6], [12.4, 9.8], [10.3, 9.8], [11.3, 6.6]]),
+  ].join('') },
+  // horned skull
+  kult: { acc: '#6a4a9a', acc2: '#e6f2c8', charge: [
+    chPoly(chCirc(10, 10, 3.6, 20)), chPoly(chRect(7.7, 11.5, 12.3, 15.1)),
+    chPoly(KULT_HORN), chPoly(chMirror(KULT_HORN)),
+    chPoly(chCirc(8.5, 10.4, 1.1, 10), true), chPoly(chCirc(11.5, 10.4, 1.1, 10), true),
+    chPoly([[10, 11.8], [10.7, 13.0], [9.3, 13.0]], true),
+    chPoly(chRect(8.8, 14.0, 9.3, 15.1), true), chPoly(chRect(9.75, 14.0, 10.25, 15.1), true), chPoly(chRect(10.7, 14.0, 11.2, 15.1), true),
+  ].join('') },
+};
+// Side factions of the running game (set from the `start` message by render.js); every sprite cache key carries them.
+let SIDE_FAC = ['bez', 'bez'];
+function facOf(s) { return SIDE_FAC[s] || 'bez'; }
+function setSideFacs(f) { SIDE_FAC = [0, 1].map(i => (Array.isArray(f) && FAC_ART[f[i]] ? f[i] : 'bez')); }
+const FAC_P2D = new Map();
+function facCharge(fac) {
+  const a = FAC_ART[fac];
+  if (!a || !a.charge) return null;
+  let p = FAC_P2D.get(fac);
+  if (!p) { p = new Path2D(a.charge); FAC_P2D.set(fac, p); }
+  return p;
+}
+// Emblem as a data URL for the HUD, lobby slots, end screen and faction tiles. side 0/1, anything else = neutral skin 2. px = CSS size.
+const EMB_URL = new Map();
+function emblemImg(fac, side, px = 32) {
+  const sd = side === 0 || side === 1 ? side : 2, f = FAC_ART[fac] ? fac : 'bez', key = `${f}|${sd}|${px}`;
+  let u = EMB_URL.get(key);
+  if (u) return u;
+  const P = Math.max(8, Math.round(px * Math.min(3, window.devicePixelRatio || 1))), [c, g] = cpuCanvas(P, P);
+  g.setTransform(1, 0, 0, 1, P / 2, P / 2); g.lineJoin = 'round';
+  paintEmblem(g, sd, P * 0.4, f);
+  u = c.toDataURL(); EMB_URL.set(key, u);
+  return u;
+}
+// EMP 'off' variant: desaturated and dimmed (render.js adds the crackle lines, so it is not colour only).
+function desaturate(g) {
+  const c = g.canvas, src = canvasCopy(c);
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, c.width, c.height);
+  if ('filter' in g) { g.filter = 'grayscale(1) brightness(0.78) contrast(0.9)'; g.drawImage(src, 0, 0); g.filter = 'none'; }
+  else { g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(110,118,130,0.65)'; g.fillRect(0, 0, c.width, c.height); }
+  g.restore();
+}
+function zombieCollar(g, kind, frame, face, o) {
+  const big = kind === 'obr' || kind === 'alfa', s = ZSCALE[kind] || 1.25, ph = (frame & 3) / 4 * TAU, bob = Math.abs(Math.cos(ph)) * 0.02;
+  const lean = kind === 'bezec' ? 0.1 : 0.05, hx = lean + (big ? 0.1 : 0.08), hy = big ? -0.22 : -0.24, t = TEAM[o];
+  g.save(); g.translate(0, 0.3); g.scale(face * s, s); g.translate(0, -0.3 - bob);
+  ellPath(g, hx - 0.02, hy + 0.08, 0.075, 0.03, -0.2); g.strokeStyle = SPR_INK; g.lineWidth = 0.065; g.stroke(); g.strokeStyle = t.c; g.lineWidth = 0.04; g.stroke();
+  g.translate(lean - 0.07, -0.12); g.scale(0.0075, 0.0075); g.translate(-10, -11);
+  const body = new Path2D(EMB_PATH[o][0]);
+  g.fillStyle = t.c; g.fill(body); g.strokeStyle = SPR_INK; g.lineWidth = 2.6; g.stroke(body);
+  g.restore();
+}
+function paintGear(g, x, y, r, col) {
+  g.beginPath();
+  for (let i = 0; i < 16; i++) { const a = i / 16 * TAU, rr = i % 4 < 2 ? r : r * 0.74; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); }
+  g.closePath(); g.moveTo(x + r * 0.3, y); g.arc(x, y, r * 0.3, 0, TAU, true);
+  g.fillStyle = col; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = r * 0.16; g.stroke();
+}
+function paintWrench(g, x, y, k, col) {
+  g.save(); g.translate(x, y); g.rotate(-0.7); g.scale(k, k);
+  rrect(g, -0.02, -0.06, 0.04, 0.17, 0.012); g.fillStyle = col; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+  circPath(g, 0, -0.08, 0.045); g.fill(); g.stroke();
+  rrect(g, -0.014, -0.135, 0.028, 0.06, 0.006); g.fillStyle = SPR_INK; g.fill();
+  g.restore();
+}
+function paintBone(g, x, y, len, a, col = PAL.bone) {
+  g.save(); g.translate(x, y); g.rotate(a);
+  g.fillStyle = col; g.strokeStyle = SPR_INK; g.lineWidth = 0.01;
+  rrect(g, -len / 2, -0.009, len, 0.018, 0.006); g.fill(); g.stroke();
+  for (const d of [-1, 1]) for (const e of [-1, 1]) { circPath(g, d * len / 2, e * 0.012, 0.013); g.fill(); g.stroke(); }
+  g.restore();
+}
+// King sceptre per faction (in the King's facing space).
+function paintSceptre(g, fac) {
+  const A = FAC_ART[fac] || FAC_ART.bez;
+  const shaft = col => { g.beginPath(); g.moveTo(0.15, 0.16); g.lineTo(0.19, -0.2); g.strokeStyle = SPR_INK; g.lineWidth = 0.05; g.stroke(); g.strokeStyle = col; g.lineWidth = 0.028; g.stroke(); };
+  if (fac === 'prez') {          // hammer
+    shaft(PAL.wood);
+    g.save(); g.translate(0.192, -0.23); g.rotate(0.11);
+    rrect(g, -0.08, -0.04, 0.16, 0.075, 0.015); g.fillStyle = linGrad(g, 0, -0.04, 0, 0.035, ['#9a9ea6', A.acc2, '#2e3034']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.016; g.stroke();
+    g.fillStyle = A.acc; g.fillRect(-0.015, -0.04, 0.03, 0.075);
+    g.restore();
+  } else if (fac === 'korp') {   // coil rod with a spark ring
+    shaft(A.acc);
+    for (let i = 0; i < 3; i++) { ellPath(g, 0.183 + i * 0.004, -0.09 - i * 0.04, 0.035, 0.012, 0.1); g.strokeStyle = SPR_INK; g.lineWidth = 0.022; g.stroke(); g.strokeStyle = PAL.bronze; g.lineWidth = 0.012; g.stroke(); }
+    circPath(g, 0.195, -0.24, 0.05); g.strokeStyle = SPR_INK; g.lineWidth = 0.028; g.stroke(); g.strokeStyle = A.acc2; g.lineWidth = 0.014; g.stroke();
+    circPath(g, 0.195, -0.24, 0.018); g.fillStyle = A.acc2; g.fill();
+  } else if (fac === 'kult') {   // bone staff with a pale lantern
+    shaft(PAL.bone);
+    rrect(g, 0.16, -0.31, 0.07, 0.09, 0.015); g.fillStyle = rgba(A.acc2, 0.85); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.016; g.stroke();
+    g.beginPath(); g.moveTo(0.195, -0.31); g.lineTo(0.195, -0.22); g.strokeStyle = rgba(SPR_INK, 0.6); g.lineWidth = 0.008; g.stroke();
+    poly(g, [[0.155, -0.31], [0.195, -0.35], [0.235, -0.31]]); g.fillStyle = PAL.bone; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+  } else {                       // gilt sceptre (0.5)
+    shaft(PAL.gilt);
+    circPath(g, 0.195, -0.23, 0.04); g.fillStyle = linGrad(g, 0, -0.27, 0, -0.19, ['#fff0b8', '#d8b45a', '#8a6a2a']); g.fill(); g.strokeStyle = GILT_INK; g.lineWidth = 0.014; g.stroke();
+  }
+}
+// Head [x, y, r] of each piece (piece space, before the 1.15 base scale) for caps, visors and hoods.
+const PIECE_HEAD = { pesak: [0, -0.17, 0.105], strelec: [0, -0.2, 0.1], jezdec: [0.06, -0.25, 0.09], dama: [0, -0.25, 0.1], medik: [-0.01, -0.17, 0.13],
+  saboter: [0, -0.2, 0.09], mrchozrout: [0.1, -0.17, 0.09] };
+const BIG_PIECES = new Set(['obrnenec', 'dama', 'exo']);
+// Faction trim pass (after paintBuilding / paintPiece / paintKing / paintThrone). Accents stay small; shape first.
+function paintFacTrim(g, cat, kind, s, fac, f = 1) {
+  const A = FAC_ART[fac];
+  if (!A || !A.acc) return;
+  if (cat === 'b') trimBuilding(g, kind, fac, A);
+  else if (cat === 'u') trimUnit(g, kind, fac, A, f);
+  else if (cat === 'th') trimThrone(g, fac, A);
+}
+function trimBuilding(g, kind, fac, A) {
+  if (kind === 'zed' || kind === 'mina' || kind === 'ostnata') return;
+  if (fac === 'prez') {
+    for (const [x, a] of [[-0.21, -0.1], [0.2, 0.08]]) {
+      g.save(); g.translate(x, 0.2); g.rotate(a);
+      rrect(g, -0.11, -0.025, 0.22, 0.05, 0.01); g.fillStyle = linGrad(g, 0, -0.025, 0, 0.025, ['#b4875a', A.acc, '#6a4524']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+      for (const d of [-0.08, 0.08]) { circPath(g, d, 0, 0.011); g.fillStyle = A.acc2; g.fill(); }
+      g.restore();
+    }
+    g.beginPath(); g.moveTo(-0.37, 0.16); g.lineTo(-0.37, -0.3); g.strokeStyle = SPR_INK; g.lineWidth = 0.03; g.stroke(); g.strokeStyle = PAL.woodD; g.lineWidth = 0.016; g.stroke();
+    poly(g, [[-0.365, -0.3], [-0.2, -0.26], [-0.365, -0.21]]); g.fillStyle = A.acc; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+    g.fillStyle = A.acc2; g.fillRect(-0.33, -0.27, 0.035, 0.03);
+  } else if (fac === 'korp') {
+    g.fillStyle = SPR_INK; g.fillRect(-0.4, 0.16, 0.8, 0.045); g.fillStyle = linGrad(g, 0, 0.165, 0, 0.2, ['#dfe6ec', A.acc, '#6c757e']); g.fillRect(-0.39, 0.165, 0.78, 0.034);
+    g.beginPath(); g.moveTo(0.36, 0.16); g.lineTo(0.37, -0.32); g.strokeStyle = SPR_INK; g.lineWidth = 0.026; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.013; g.stroke();
+    circPath(g, 0.37, -0.33, 0.026); g.fillStyle = A.acc2; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.01; g.stroke();
+  } else if (fac === 'kult') {
+    g.beginPath(); g.moveTo(-0.39, 0.15); g.quadraticCurveTo(0, 0.24, 0.39, 0.15); g.strokeStyle = SPR_INK; g.lineWidth = 0.024; g.stroke(); g.strokeStyle = '#8a7a5a'; g.lineWidth = 0.012; g.stroke();
+    for (const x of [-0.22, 0, 0.22]) {
+      const y = 0.15 + 0.045 * (1 - (x / 0.39) ** 2) + 0.005;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 0.03); g.strokeStyle = A.acc; g.lineWidth = 0.012; g.stroke();
+      paintBone(g, x, y + 0.05, 0.07, Math.PI / 2 + x);
+    }
+  }
+}
+function trimUnit(g, kind, fac, A, f) {
+  const rx = BIG_PIECES.has(kind) ? 0.27 : 0.24;
+  g.save(); g.translate(0, 0.3); g.scale(1.15, 1.15); g.translate(0, -0.3);
+  const rimY = x => 0.215 + Math.sqrt(Math.max(0, 1 - (x / rx) ** 2)) * rx * 0.32;
+  if (fac === 'prez') {
+    ellPath(g, 0, 0.215, rx + 0.004, (rx + 0.004) * 0.32);
+    g.setLineDash([0.035, 0.022]); g.strokeStyle = SPR_INK; g.lineWidth = 0.034; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.02; g.stroke(); g.setLineDash([]);
+  } else if (fac === 'korp') {
+    ellPath(g, 0, 0.215, rx + 0.006, (rx + 0.006) * 0.32); g.strokeStyle = SPR_INK; g.lineWidth = 0.03; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.016; g.stroke();
+    for (const k of [-0.75, -0.25, 0.25, 0.75]) { circPath(g, k * rx, rimY(k * rx), 0.016); g.fillStyle = A.acc2; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.008; g.stroke(); }
+  } else if (fac === 'kult') {
+    for (const x of [-0.13, 0, 0.13]) {
+      const y = rimY(x);
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 0.025); g.strokeStyle = A.acc; g.lineWidth = 0.012; g.stroke();
+      paintBone(g, x, y + 0.045, 0.06, Math.PI / 2 + x * 2);
+    }
+  }
+  const h = PIECE_HEAD[kind];
+  if (h) {
+    const [x0, hy, hr] = h, hx = ASYM_PIECES.has(kind) ? x0 * f : x0;
+    if (fac === 'prez') {
+      g.beginPath(); g.arc(hx, hy, hr + 0.008, Math.PI * 1.08, Math.PI * 1.92); g.strokeStyle = SPR_INK; g.lineWidth = 0.06; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.04; g.stroke();
+      for (const d of [-1, 1]) { circPath(g, hx + d * hr * 0.38, hy - hr * 0.62, hr * 0.27); g.fillStyle = A.acc2; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke(); }
+    } else if (fac === 'korp') {
+      rrect(g, hx - hr * 0.78, hy - hr * 0.28, hr * 1.56, hr * 0.36, hr * 0.12); g.fillStyle = SPR_INK; g.fill();
+      g.fillStyle = A.acc2; g.fillRect(hx - hr * 0.6, hy - hr * 0.16, hr * 1.2, hr * 0.12);
+    } else if (fac === 'kult') {
+      g.beginPath(); g.arc(hx, hy, hr + 0.02, Math.PI * 0.95, Math.PI * 2.05); g.strokeStyle = SPR_INK; g.lineWidth = 0.06; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.04; g.stroke();
+      poly(g, [[hx - 0.035, hy - hr - 0.005], [hx, hy - hr - 0.075], [hx + 0.035, hy - hr - 0.005]]); g.fillStyle = A.acc; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+    }
+  }
+  g.restore();
+}
+function trimThrone(g, fac, A) {
+  if (fac === 'prez') {          // sandbags
+    for (const d of [-1, 1]) for (const [x, y] of [[0.46, 0.7], [0.58, 0.7], [0.52, 0.61]]) {
+      ellPath(g, d * x, y, 0.075, 0.048); g.fillStyle = linGrad(g, 0, y - 0.05, 0, y + 0.05, ['#a8926a', '#7a6646', '#4e402a']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.016; g.stroke();
+      g.beginPath(); g.moveTo(d * x - 0.045, y - 0.01); g.lineTo(d * x - 0.045, y + 0.03); g.strokeStyle = A.acc; g.lineWidth = 0.012; g.stroke();
+    }
+  } else if (fac === 'korp') {   // steel crates with an antenna
+    for (const d of [-1, 1]) {
+      rrect(g, d > 0 ? 0.4 : -0.6, 0.54, 0.2, 0.2, 0.02); g.fillStyle = linGrad(g, 0, 0.54, 0, 0.74, ['#c6ced6', A.acc, '#5e666e']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.018; g.stroke();
+      g.beginPath(); g.moveTo(d * 0.4, 0.54); g.lineTo(d * 0.6, 0.74); g.moveTo(d * 0.6, 0.54); g.lineTo(d * 0.4, 0.74); g.strokeStyle = rgba(SPR_INK, 0.5); g.lineWidth = 0.012; g.stroke();
+    }
+    g.beginPath(); g.moveTo(0.56, 0.54); g.lineTo(0.58, 0.22); g.strokeStyle = SPR_INK; g.lineWidth = 0.026; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.013; g.stroke();
+    circPath(g, 0.58, 0.21, 0.026); g.fillStyle = A.acc2; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.01; g.stroke();
+  } else if (fac === 'kult') {   // ring of 3 pale candles
+    for (const [x, y, h] of [[-0.44, 0.74, 0.16], [0, 0.82, 0.12], [0.44, 0.74, 0.14]]) {
+      const gr = g.createRadialGradient(x, y - h - 0.03, 0, x, y - h - 0.03, 0.12); gr.addColorStop(0, rgba(A.acc2, 0.55)); gr.addColorStop(1, rgba(A.acc2, 0));
+      g.fillStyle = gr; g.fillRect(x - 0.12, y - h - 0.15, 0.24, 0.24);
+      rrect(g, x - 0.028, y - h, 0.056, h, 0.012); g.fillStyle = linGrad(g, x - 0.03, 0, x + 0.03, 0, ['#f4f0dc', '#c9c4a8']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+      g.beginPath(); g.moveTo(x, y - h - 0.07); g.quadraticCurveTo(x + 0.025, y - h - 0.02, x, y - h); g.quadraticCurveTo(x - 0.025, y - h - 0.02, x, y - h - 0.07); g.fillStyle = A.acc2; g.fill();
+    }
+  }
+}
+// Ostnatá zeď: spiked wall; the 3 levels go wood -> wire -> steel.
+function paintSpikeWall(g, s, lvl) {
+  const m = skinOf(s);
+  groundShadow(g, 0.44, 0.33);
+  if (lvl <= 1) {
+    for (let i = 0; i < 4; i++) for (const d of [-1, 1]) {
+      g.save(); g.translate(-0.3 + i * 0.2, 0.06); g.rotate(d * 0.55);
+      poly(g, [[-0.028, 0.24], [-0.028, -0.2], [0, -0.3], [0.028, -0.2], [0.028, 0.24]]);
+      g.fillStyle = linGrad(g, -0.03, 0, 0.03, 0, ['#8a6240', PAL.woodD]); g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.016; g.stroke();
+      g.restore();
+    }
+    rrect(g, -0.45, 0.0, 0.9, 0.09, 0.03); g.fillStyle = linGrad(g, 0, 0, 0, 0.09, ['#8a6240', PAL.wood, PAL.woodD]); g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.018; g.stroke();
+    g.strokeStyle = '#2e2a26'; g.lineWidth = 0.012;
+    for (const x of [-0.3, 0, 0.3]) { g.beginPath(); g.moveTo(x - 0.03, 0.0); g.lineTo(x + 0.03, 0.09); g.moveTo(x + 0.03, 0.0); g.lineTo(x - 0.03, 0.09); g.stroke(); }
+  } else if (lvl === 2) {
+    for (const x of [-0.38, 0, 0.38]) { rrect(g, x - 0.03, -0.3, 0.06, 0.6, 0.01); g.fillStyle = linGrad(g, x - 0.03, 0, x + 0.03, 0, ['#8a6240', PAL.woodD]); g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.016; g.stroke(); }
+    for (const yy of [-0.17, 0.06]) {
+      g.beginPath(); for (let i = 0; i < 8; i++) { const x = -0.4 + i * 0.115; g.moveTo(x + 0.07, yy); g.ellipse(x, yy, 0.07, 0.09, 0, 0, TAU); }
+      g.strokeStyle = SPR_INK; g.lineWidth = 0.028; g.stroke(); g.strokeStyle = PAL.ironL; g.lineWidth = 0.014; g.stroke();
+      g.beginPath(); for (let i = 0; i < 7; i++) { const x = -0.34 + i * 0.115, y = yy - 0.09; g.moveTo(x - 0.02, y - 0.02); g.lineTo(x + 0.02, y + 0.02); g.moveTo(x + 0.02, y - 0.02); g.lineTo(x - 0.02, y + 0.02); }
+      g.strokeStyle = '#c9ccd3'; g.lineWidth = 0.012; g.stroke();
+    }
+  } else {
+    rrect(g, -0.45, -0.16, 0.9, 0.46, 0.03); g.fillStyle = linGrad(g, 0, -0.16, 0, 0.3, ['#a6acb4', '#6a6f77', '#3d4045']); g.fill(); g.strokeStyle = '#141518'; g.lineWidth = 0.02; g.stroke();
+    for (let i = 0; i < 8; i++) { const x = -0.39 + i * 0.111; poly(g, [[x - 0.045, -0.15], [x, -0.36], [x + 0.045, -0.15]]); g.fillStyle = linGrad(g, x - 0.05, 0, x + 0.05, 0, ['#e3e6ea', '#7a7f87']); g.fill(); g.strokeStyle = '#141518'; g.lineWidth = 0.014; g.stroke(); }
+    for (const y of [-0.08, 0.18]) for (let i = 0; i < 6; i++) { circPath(g, -0.36 + i * 0.144, y, 0.017); g.fillStyle = '#c9ccd3'; g.fill(); }
+    g.strokeStyle = rgba('#141518', 0.5); g.lineWidth = 0.012; g.beginPath(); g.moveTo(0, -0.16); g.lineTo(0, 0.3); g.stroke();
+  }
+  g.fillStyle = m.t; g.fillRect(-0.43, 0.26, 0.86, 0.05);
+}
+Object.assign(BUILD, {
+  // Dílna: a workbench under an awning; A shows a gear, B a wrench.
+  dilna(g, s, lvl, path) {
+    for (const x of [-0.32, 0.28]) { rrect(g, x, -0.3, 0.04, 0.46, 0.01); g.fillStyle = PAL.woodD; g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.014; g.stroke(); }
+    g.beginPath(); g.moveTo(-0.38, -0.32); g.lineTo(0.36, -0.36); g.lineTo(0.4, -0.22);
+    for (let i = 0; i < 6; i++) { const x0 = 0.4 - i * 0.13; g.quadraticCurveTo(x0 - 0.065, -0.15, x0 - 0.13, -0.22); }
+    g.closePath(); teamFill(g, s, -0.36, -0.15);
+    rrect(g, -0.32, -0.04, 0.64, 0.06, 0.015); g.fillStyle = linGrad(g, 0, -0.04, 0, 0.02, ['#8a6240', PAL.woodD]); g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.016; g.stroke();
+    g.fillStyle = PAL.woodD; for (const x of [-0.28, 0.24]) g.fillRect(x, 0.02, 0.04, 0.12);
+    rrect(g, 0.1, -0.12, 0.12, 0.08, 0.012); g.fillStyle = linGrad(g, 0, -0.12, 0, -0.04, ['#9a9ea6', '#4a4d52']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke();
+    g.beginPath(); g.moveTo(0.16, -0.12); g.lineTo(0.16, -0.17); g.strokeStyle = SPR_INK; g.lineWidth = 0.02; g.stroke();
+    if (path === 'A') paintGear(g, -0.14, -0.1, 0.075, '#b8bcc4');
+    else if (path === 'B') paintWrench(g, -0.14, -0.08, 1, '#b8bcc4');
+    else for (const [x, y, w] of [[-0.2, -0.07, 0.07], [-0.1, -0.08, 0.05], [-0.15, -0.11, 0.06]]) { rrect(g, x, y, w, 0.03, 0.006); g.fillStyle = '#7a7f87'; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.01; g.stroke(); }
+  },
+  // Dronový hangár: a bell-tower hatch with 2 perched bats.
+  hangar(g, s) {
+    const m = skinOf(s);
+    poly(g, [[-0.21, 0.2], [-0.18, -0.2], [0.18, -0.2], [0.21, 0.2]]); solidFill(g, s, -0.2, 0.2);
+    poly(g, [[-0.27, -0.18], [0, -0.44], [0.27, -0.18]]); teamFill(g, s, -0.44, -0.18);
+    g.beginPath(); g.moveTo(-0.09, 0.04); g.lineTo(-0.09, -0.08); g.arc(0, -0.08, 0.09, Math.PI, 0); g.lineTo(0.09, 0.04); g.closePath();
+    g.fillStyle = '#0a0706'; g.fill(); g.strokeStyle = m.ink; g.lineWidth = 0.02; g.stroke();
+    for (const d of [-1, 1]) { poly(g, [[d * 0.09, 0.04], [d * 0.16, 0.02], [d * 0.16, -0.11], [d * 0.09, -0.08]]); g.fillStyle = linGrad(g, 0, -0.1, 0, 0.04, ['#8a6240', PAL.woodD]); g.fill(); g.strokeStyle = '#1e140c'; g.lineWidth = 0.012; g.stroke(); }
+    for (const d of [-1, 1]) { g.save(); g.translate(d * 0.2, -0.25); g.scale(0.4, 0.4); paintBat(g, m.tHi, m.t, 0); g.restore(); }
+  },
+  // Hnízdo: a grave mound with clawed hands; A adds eggs, B a big hand.
+  hnizdo(g, s, lvl, path) {
+    rrect(g, -0.07, -0.3, 0.14, 0.22, 0.06); solidFill(g, s, -0.3, -0.08, 0.02);
+    g.beginPath(); g.moveTo(-0.38, 0.17); g.bezierCurveTo(-0.32, -0.12, 0.32, -0.12, 0.38, 0.17); g.closePath();
+    g.fillStyle = linGrad(g, 0, -0.1, 0, 0.17, ['#5a4a3a', '#2e241c']); g.fill(); g.strokeStyle = '#120c08'; g.lineWidth = 0.02; g.stroke();
+    const hand = (x, y, k, a) => {
+      g.save(); g.translate(x, y); g.rotate(a); g.scale(k, k);
+      rrect(g, -0.025, -0.1, 0.05, 0.13, 0.02); g.fillStyle = linGrad(g, -0.03, 0, 0.03, 0, [PAL.fleshL, PAL.fleshD]); g.fill(); g.strokeStyle = PAL.zInk; g.lineWidth = 0.012; g.stroke();
+      g.beginPath(); for (const fa of [-0.5, -0.15, 0.2, 0.55]) { g.moveTo(Math.sin(fa) * 0.02, -0.1); g.quadraticCurveTo(Math.sin(fa) * 0.06, -0.15, Math.sin(fa) * 0.07 + 0.012, -0.19); }
+      g.strokeStyle = PAL.zInk; g.lineWidth = 0.028; g.stroke(); g.strokeStyle = PAL.flesh; g.lineWidth = 0.014; g.stroke();
+      g.restore();
+    };
+    hand(-0.19, 0.06, 1, -0.35); hand(0.18, 0.07, 1, 0.4);
+    if (path === 'B') hand(0.0, 0.02, 1.55, 0.05);
+    if (path === 'A') for (const [x, y] of [[-0.08, 0.13], [0.03, 0.15], [0.12, 0.12]]) { ellPath(g, x, y, 0.04, 0.05); g.fillStyle = linGrad(g, x, y - 0.05, x, y + 0.05, ['#f0ead8', '#b8ae94']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke(); }
+  },
+});
+Object.assign(PIECE, {
+  // Mrchožrout: a hunched piece carrying a sack.
+  mrchozrout(g, s, f) {
+    const m = skinOf(s);
+    g.save(); g.scale(f, 1);
+    ellPath(g, -0.13, -0.13, 0.13, 0.15, -0.3); g.fillStyle = linGrad(g, -0.26, -0.28, 0, 0.02, ['#a0825c', '#6b5236']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.02; g.stroke();
+    g.beginPath(); g.moveTo(-0.2, -0.26); g.lineTo(-0.08, -0.29); g.strokeStyle = '#3a2a1a'; g.lineWidth = 0.025; g.stroke();
+    g.beginPath(); g.moveTo(-0.16, 0.2); g.bezierCurveTo(-0.14, 0.02, -0.06, -0.12, 0.06, -0.13); g.bezierCurveTo(0.15, -0.1, 0.13, 0.05, 0.16, 0.2); g.closePath(); solidFill(g, s, -0.13, 0.2);
+    circPath(g, 0.1, -0.17, 0.09); solidFill(g, s, -0.26, -0.08);
+    g.beginPath(); g.moveTo(-0.07, -0.11); g.lineTo(0.1, 0.08); g.strokeStyle = m.t; g.lineWidth = 0.035; g.stroke();
+    g.restore();
+  },
+  // Exoskelet: a piece in a steel frame with a glowing chest node.
+  exo(g, s) {
+    const A = FAC_ART.korp;
+    poly(g, [[-0.19, 0.2], [-0.14, -0.1], [0.14, -0.1], [0.19, 0.2]]); solidFill(g, s, -0.1, 0.2);
+    circPath(g, 0, -0.2, 0.1); solidFill(g, s, -0.3, -0.1);
+    g.beginPath(); g.moveTo(-0.25, -0.08); g.lineTo(0.25, -0.08); g.moveTo(-0.23, -0.08); g.lineTo(-0.21, 0.17); g.moveTo(0.23, -0.08); g.lineTo(0.21, 0.17);
+    g.moveTo(-0.12, -0.2); g.lineTo(-0.12, -0.32); g.lineTo(0.12, -0.32); g.lineTo(0.12, -0.2);
+    g.strokeStyle = SPR_INK; g.lineWidth = 0.055; g.stroke(); g.strokeStyle = A.acc; g.lineWidth = 0.03; g.stroke();
+    for (const [x, y] of [[-0.23, -0.08], [0.23, -0.08]]) { circPath(g, x, y, 0.03); g.fillStyle = '#6c757e'; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.012; g.stroke(); }
+    circPath(g, 0, 0.02, 0.048); g.fillStyle = A.acc2; g.shadowColor = A.acc2; g.shadowBlur = 0.08 * Math.hypot(g.getTransform().a, g.getTransform().b); g.fill(); g.shadowBlur = 0;
+    g.strokeStyle = SPR_INK; g.lineWidth = 0.014; g.stroke();
+    g.fillStyle = SPR_INK; g.fillRect(-0.07, -0.215, 0.14, 0.03); g.fillStyle = A.acc2; g.fillRect(-0.055, -0.208, 0.11, 0.014);
+  },
+  // Nekromant: a hooded piece with a skull lantern.
+  nekromant(g, s, f) {
+    const m = skinOf(s), A = FAC_ART.kult;
+    g.save(); g.scale(f, 1);
+    g.beginPath(); g.moveTo(-0.18, 0.2); g.bezierCurveTo(-0.15, 0.0, -0.12, -0.14, -0.08, -0.2); g.lineTo(0.08, -0.2); g.bezierCurveTo(0.12, -0.14, 0.15, 0, 0.18, 0.2); g.closePath(); solidFill(g, s, -0.2, 0.2);
+    ellPath(g, 0, -0.12, 0.12, 0.028); g.fillStyle = m.t; g.fill();
+    g.beginPath(); g.moveTo(-0.13, -0.12); g.quadraticCurveTo(-0.15, -0.34, 0.02, -0.44); g.quadraticCurveTo(0.15, -0.3, 0.13, -0.12); g.closePath(); solidFill(g, s, -0.44, -0.12);
+    ellPath(g, 0.01, -0.21, 0.065, 0.075); g.fillStyle = '#050304'; g.fill();
+    for (const d of [-1, 1]) { circPath(g, 0.012 + d * 0.026, -0.22, 0.012); g.fillStyle = A.acc2; g.fill(); }
+    g.beginPath(); g.moveTo(0.22, 0.18); g.lineTo(0.23, -0.26); g.strokeStyle = SPR_INK; g.lineWidth = 0.04; g.stroke(); g.strokeStyle = PAL.wood; g.lineWidth = 0.022; g.stroke();
+    const gr = g.createRadialGradient(0.23, -0.31, 0, 0.23, -0.31, 0.11); gr.addColorStop(0, rgba(A.acc2, 0.6)); gr.addColorStop(1, rgba(A.acc2, 0));
+    g.fillStyle = gr; g.fillRect(0.12, -0.42, 0.22, 0.22);
+    paintSkull(g, 0.23, -0.33, 0.05);
+    g.restore();
+  },
+});
+Object.assign(MOTIF, {
+  // EMP výboj: a shattered coil inside a ring.
+  emp(g) {
+    circPath(g, 0, 0, 0.42); g.strokeStyle = SPR_INK; g.lineWidth = 0.09; g.stroke(); g.strokeStyle = '#e9f2ff'; g.lineWidth = 0.05; g.stroke();
+    for (const [y0, y1, dx, a] of [[-0.3, -0.05, -0.03, -0.12], [0.05, 0.3, 0.03, 0.1]]) {
+      g.save(); g.rotate(a); g.beginPath();
+      for (let i = 0; i <= 5; i++) g.lineTo(dx + (i % 2 ? 0.12 : -0.12), y0 + (y1 - y0) * i / 5);
+      g.strokeStyle = SPR_INK; g.lineWidth = 0.08; g.stroke(); g.strokeStyle = '#aab4be'; g.lineWidth = 0.045; g.stroke();
+      g.restore();
+    }
+    g.beginPath(); for (const [x, y, a] of [[0.05, 0, 0.3], [-0.06, 0.01, 2.9], [0.02, -0.02, -1.2]]) { g.moveTo(x, y); g.lineTo(x + Math.cos(a) * 0.12, y + Math.sin(a) * 0.12); g.lineTo(x + Math.cos(a + 0.5) * 0.2, y + Math.sin(a + 0.5) * 0.2); }
+    g.strokeStyle = PAL.ghostD; g.lineWidth = 0.05; g.stroke(); g.strokeStyle = '#ffffff'; g.lineWidth = 0.02; g.stroke();
+  },
+  // Mor: a beak mask in a cloud.
+  mor(g) {
+    g.beginPath(); for (const [x, y, r] of [[-0.24, 0.08, 0.18], [-0.02, -0.08, 0.24], [0.24, 0.06, 0.18], [0.02, 0.2, 0.2]]) { g.moveTo(x + r, y); g.arc(x, y, r, 0, TAU); }
+    g.fillStyle = linGrad(g, 0, -0.32, 0, 0.4, ['#a8b896', '#6c7a5a', '#3e4834']); g.fill();
+    g.strokeStyle = 'rgba(29,34,22,0.55)'; g.lineWidth = 0.02; g.stroke();
+    ellPath(g, -0.08, -0.02, 0.15, 0.17); g.fillStyle = linGrad(g, -0.2, -0.2, 0.1, 0.15, ['#4a3e36', '#1e1814']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.025; g.stroke();
+    poly(g, [[0.02, -0.07], [0.38, 0.14], [0.02, 0.06]]); g.fillStyle = linGrad(g, 0, -0.07, 0, 0.14, [PAL.bone, '#9a8e74']); g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.02; g.stroke();
+    circPath(g, -0.07, -0.06, 0.05); g.fillStyle = '#e6f2c8'; g.fill(); g.strokeStyle = SPR_INK; g.lineWidth = 0.02; g.stroke();
+  },
+});

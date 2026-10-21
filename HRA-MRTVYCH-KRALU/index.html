@@ -8,6 +8,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Alegreya+Sans:ital,wght@0,500;0,700;0,800;1,500&family=Grenze+Gotisch:wght@600;800&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="css/lobby.css">
+<link rel="stylesheet" href="css/modes.css">
+<link rel="stylesheet" href="css/meta.css">
+<link rel="stylesheet" href="css/settings.css">
 </head>
 <body>
 
@@ -18,39 +22,72 @@
   <div class="lwrap">
     <header class="lhead">
       <canvas id="logoCrown" width="120" height="84" aria-hidden="true"></canvas>
-      <div class="eyebrow">LAN · 1 v 1 · <span id="ver">v0.5</span></div>
+      <div class="eyebrow">LAN · 1 v 1 · <span id="ver">v0.9</span></div>
       <h1 class="logo"><span class="la">Hra mrtvých</span><span class="lb">králů</span></h1>
       <div class="rubr" aria-hidden="true"><i></i></div>
       <p class="tagline">Dva mrtví králové. Jedno město. <b>Mlha</b> mezi nimi.</p>
     </header>
     <div class="lcols">
-      <section class="folio orn lcol">
-        <label class="lbl" for="name">Tvé jméno</label>
-        <input type="text" id="name" maxlength="16" placeholder="Král" autocomplete="off">
+      <section class="folio orn lcol" id="matchFolio" aria-label="Zápas">
+        <div class="namebox">
+          <label class="lbl" for="name">Tvé jméno</label>
+          <div class="namerow"><input type="text" id="name" maxlength="16" placeholder="Král" autocomplete="off"><span class="lvbadge hidden" id="lvBadge"></span></div>
+        </div>
+        <div class="fld">
+          <span class="lbl" id="typeLbl">Typ hry</span>
+          <div class="seg4" id="typeSeg" role="radiogroup" aria-labelledby="typeLbl"></div>
+          <p class="fdesc" id="typeDesc"></p>
+        </div>
+        <div class="setgrid">
+          <div class="fld" id="ctlBlock">
+            <span class="lbl" id="ctlLbl">Ovládání</span>
+            <div class="modes" role="radiogroup" aria-labelledby="ctlLbl">
+              <button class="mode" role="radio" data-mode="kral" style="--c:#c9a24a"><img class="ico" data-icon="kral" data-col="#c9a24a" alt=""><span><b>Král</b><span>Ovládáš postavu (WASD). Víc akce.</span></span></button>
+              <button class="mode" role="radio" data-mode="strateg" style="--c:#6a4a9a"><img class="ico" data-icon="odstrel" data-col="#a77bd6" alt=""><span><b>Stratég</b><span>Bez postavy, velitelské schopnosti. Víc přemýšlení.</span></span></button>
+            </div>
+          </div>
+          <div class="fld" id="mapBlock">
+            <label class="lbl" for="mapSel">Mapa</label>
+            <select id="mapSel"></select>
+            <div class="mapbox"><canvas id="mapPrev" class="mapprev" width="128" height="72" aria-hidden="true"></canvas><p class="fdesc" id="mapDesc"></p></div>
+          </div>
+        </div>
+        <div id="typePane"></div>
+        <div class="fld hidden" id="diffBlock">
+          <span class="lbl" id="diffLbl">Obtížnost</span>
+          <div class="segn" id="diffSeg" role="radiogroup" aria-labelledby="diffLbl"></div>
+          <p class="fdesc" id="diffDesc"></p>
+        </div>
+        <div id="facPane"></div>
         <div class="slots" id="slots"></div>
         <div class="note hidden" id="note"></div>
-        <h3>Režim hry</h3>
-        <div class="modes">
-          <button class="mode" data-mode="kral" style="--c:#c9a24a"><img class="ico big" data-icon="kral" data-col="#c9a24a" alt=""><span><b>Král</b><span>Ovládáš postavu (WASD): střílí, blokuje, opravuje a sbírá bedny. Víc akce.</span></span></button>
-          <button class="mode" data-mode="strateg" style="--c:#6a4a9a"><img class="ico big" data-icon="odstrel" data-col="#a77bd6" alt=""><span><b>Stratég</b><span>Bez postavy. Pět velitelských schopností s dobou obnovy. Víc přemýšlení.</span></span></button>
-        </div>
-        <label class="chk"><input type="checkbox" id="tipsChk"> Rady pro nové hráče během hry</label>
         <div class="row">
           <button class="btn primary big" id="readyBtn">Jsem připraven</button>
-          <button class="btn dark" id="helpBtn">Jak se hraje</button>
+          <button class="btn primary big hidden" id="startBtn">Začít</button>
+          <button class="btn dark hidden" id="soloBtn" title="Spustí Přežití jen pro tebe, soupeř bude podle volby nikdo nebo počítač">Hrát sám</button>
         </div>
         <div class="err" id="err"></div>
+        <div class="row links">
+          <button class="btn dark small" id="helpBtn">Jak se hraje</button>
+          <button class="btn dark small" id="tutBtn" title="Průvodce hrou s úkoly, asi 8 minut">Výuka (8 min)</button>
+        </div>
+        <label class="chk"><input type="checkbox" id="tipsChk"> Rady pro nové hráče během hry</label>
         <div class="urls" id="urls"></div>
         <div class="tipday" id="tipday"></div>
       </section>
-      <section class="folio orn lcol">
-        <div class="deckhead">
-          <h3>Balíček</h3><span id="deckCount" title="Vybrané karty"></span>
-          <button class="btn small" id="deckRec">Doporučený</button>
-          <button class="btn small dark" id="deckClear">Vyčistit</button>
+      <section class="folio orn lcol" id="rightFolio" aria-label="Balíček a profil">
+        <div class="ftabs" id="folioTabs" role="tablist"></div>
+        <div id="folioPane">
+          <div id="tab_deck" class="tabpane" role="tabpanel">
+            <div class="deckhead">
+              <h3>Balíček</h3><span id="deckCount" title="Vybrané karty"></span>
+              <button class="btn small" id="deckRec">Doporučený</button>
+              <button class="btn small dark" id="deckClear">Vyčistit</button>
+            </div>
+            <p class="muted">Vždy máš Generátor, Zeď a Tlupu. K nim vyber 8 karet. Soupeř tvůj výběr neuvidí. Karty s Dobou II se odemknou až po dvou výzkumech.</p>
+            <div id="deck"><p class="muted">Načítám karty ze serveru…</p></div>
+          </div>
         </div>
-        <p class="muted">Vždy máš Generátor, Zeď a Tlupu. K nim vyber 8 karet. Soupeř tvůj výběr neuvidí. Karty s Dobou II se odemknou až po dvou výzkumech.</p>
-        <div id="deck"><p class="muted">Načítám karty ze serveru…</p></div>
       </section>
     </div>
   </div>
@@ -76,6 +113,7 @@
       <div id="tip" class="hidden"></div>
     </div>
     <div id="ann" aria-live="polite"></div>
+    <div id="tutCard" class="hidden" aria-live="polite"></div>
   </div>
   <div id="side" class="orn"><div id="sideMain"></div><div id="toasts" aria-live="polite"></div></div>
   <div id="bar"></div>
@@ -101,6 +139,7 @@
     <h1 id="endT"></h1>
     <div class="sub" id="endR"></div>
     <table id="endS"></table>
+    <div id="endMeta"></div>
     <button class="btn primary big" id="endBtn">Zpět do lobby</button>
   </div>
 </div>
@@ -135,7 +174,7 @@
     <h3>Režimy</h3>
     <ul>
       <li><b>Král:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> pohyb, střílí sám. <kbd>Mezerník</kbd> blok (−70 % poškození; v prvních 0,3 s odrazí střelu). <kbd>Shift</kbd> výpad. <kbd>F</kbd> oprava stavby (stojí šrot). <kbd>Q</kbd> válečný pokřik, když je nabitý: 8 s chrání a zrychluje tvé jednotky kolem Krále. Mrtvý Král se vrátí za 15 s, do té doby nemůžeš stavět.</li>
-      <li><b>Stratég:</b> <kbd>Q</kbd> oprava, <kbd>W</kbd> odstřel (cíl i posvítí), <kbd>E</kbd> sběrný dron, <kbd>R</kbd> štít trůnu, <kbd>G</kbd> Útok! (tvé jednotky 6 s odolnější a rychlejší).</li>
+      <li><b>Stratég:</b> <kbd>Q</kbd> oprava, <kbd>W</kbd> odstřel (cíl i posvítí), <kbd>E</kbd> sběrný dron, <kbd>R</kbd> štít trůnu, <kbd>G</kbd> Útok! (od Doby II: tvé jednotky 6 s odolnější a rychlejší), <kbd>H</kbd> četa na Relikvii (Obrněnec a 2 Pěšáci, nebo 3 nejlevnější jednotky z balíčku; obnova 20 s).</li>
     </ul>
     <h3>Karty, vylepšení a výzkum</h3>
     <ul>
@@ -145,25 +184,50 @@
       <li><b>Vzorky</b> <span data-ic="v"></span> utrácíš za <b>výzkum</b> (<kbd>V</kbd>). Po 2 výzkumech přijde <b>Doba II</b> (silnější karty), po 5 <b>Doba III</b> (+2 energie/s).</li>
       <li>Pěšák u soupeřova trůnu se <b>promění v Dámu</b> (když žádnou nemáš, zůstanou mu jeho zranění). Jednotka se 3 zářezy se stane <b>veteránem</b>.</li>
     </ul>
+    <h3>Terén</h3>
+    <ul>
+      <li><b>Sloup</b> a <b>Voda</b> jsou neprůchozí, <b>Most</b> se dá přejít, ale nedá se na něm stavět.</li>
+      <li><b>Kanál</b>: jednotky a zombie jsou tu o čtvrtinu rychlejší, Král také. Stavět se v něm nedá.</li>
+      <li><b>Vyvýšené místo</b>: stavba na něm má o 1 pole větší dosah a dohled.</li>
+    </ul>
+    <h3>Frakce</h3>
+    <ul>
+      <li>V lobby si zvolíš <b>frakci</b>. <b>Bez frakce</b> jsou původní pravidla (doporučeno na první hru). Frakci soupeře uvidíš až na začátku zápasu. Každá frakce má 3 vlastní karty, které najdeš v balíčku nahoře. V horní liště u jména trůnu najeď na znak frakce a přečteš si její pravidla.</li>
+      <li><b>Přeživší:</b> stavby kromě Generátoru a Odstřelovače stojí o 20 % méně, Zdi mají o 40 % víc životů a stojí jen 10 <span data-ic="s"></span>, jednotky stojí o 10 % víc. Karty: Ostnatá zeď, Dílna, Mrchožrout. Král: Kovář (rychlá oprava). Stratég: Svépomoc.</li>
+      <li><b>Korporace:</b> výzkum 1. stupně stojí 1 <span data-ic="v"></span>, Tesla cívka je k dispozici už od Doby I, sdílené stavby (kromě Generátoru) a jednotky stojí o 10 % víc. Karty: Dronový hangár, Exoskelet (od Doby II), EMP výboj. Král: Tesla-rukavice. Stratég: Dronová letka.</li>
+      <li><b>Kult:</b> Tlupa stojí 80 <span data-ic="e"></span> a má 2 Běžce, zombie dávají tvým jednotkám o 50 % menší poškození, ale tvé stavby mají o 20 % méně životů. Karty: Hnízdo, Nekromant, Mor. Král: Pán mrtvých. Stratég: Volání mrtvých.</li>
+      <li>Zombie, které pošleš ty (Tlupa, Nákaza, Hnízdo, Mor, Nekromant), tobě neublíží a tvé věže ani trůn na ně nestřílejí. <b>Útok!</b> (<kbd>G</kbd>) potřebuje Dobu II.</li>
+    </ul>
     <h3>Šach-mat</h3>
+
     <ul>
       <li><b>Šach</b>: soupeřovy jednotky stojí u tvého trůnu aspoň ve 3 řadách a ty se nemůžeš bránit (Král je mrtvý / Odstřel i Štít se obnovují).</li>
       <li>Když šach trvá 10 s, je to <b>mat</b> a prohráváš.</li>
     </ul>
     <h3>Ovládání</h3>
     <ul>
-      <li><kbd>1</kbd>–<kbd>0</kbd> karty z lišty, <kbd>T</kbd> tlupa, <kbd>V</kbd> výzkum, <kbd>U</kbd> vylepšit, <kbd>X</kbd> prodat, <kbd>C</kbd> přetavit (od Doby II), <kbd>M</kbd> zvuk, <kbd>Esc</kbd> nebo pravé tlačítko zrušit, <kbd>H</kbd> nápověda</li>
+      <li><kbd>1</kbd>–<kbd>0</kbd> karty z lišty, <kbd>T</kbd> tlupa, <kbd>V</kbd> výzkum, <kbd>U</kbd> vylepšit, <kbd>X</kbd> prodat, <kbd>C</kbd> přetavit (od Doby II), <kbd>M</kbd> zvuk, <kbd>Esc</kbd> nebo pravé tlačítko zrušit (ve hře samotného hráče bez výběru otevře nabídku Pozastaveno), <kbd>H</kbd> nápověda (Stratég: <kbd>H</kbd> je četa na Relikvii, nápověda je <kbd>F1</kbd>)</li>
     </ul>
     <button class="btn primary" id="helpClose" tabindex="-1">Rozumím</button>
   </div>
 </div>
 
+<div id="vsSplash" class="hidden" role="status"></div>
+<div id="pauseOv" class="ov hidden" role="dialog" aria-label="Pozastaveno"></div>
+<div id="welcomeOv" class="ov hidden" role="dialog" aria-label="Vítej"></div>
+<div id="setOv" class="ov hidden" role="dialog" aria-label="Nastavení"></div>
+
 <script src="js/base.js"></script>
 <script src="js/paint.js"></script>
+<script src="js/maps.js"></script>
 <script src="js/ui.js"></script>
+<script src="js/lobby.js"></script>
 <script src="js/render.js"></script>
 <script src="js/input.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/modes.js"></script>
+<script src="js/meta.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

@@ -13,16 +13,11 @@ $('#name').addEventListener('input', () => {
 S.tips = load('hmk_tips', '1') === '1';
 $('#tipsChk').checked = S.tips;
 $('#tipsChk').addEventListener('change', () => { S.tips = $('#tipsChk').checked; save('hmk_tips', S.tips ? '1' : '0'); });
-$('#readyBtn').onclick = () => { uiSfx('click'); send({ t: 'ready', v: !S.ready, deck: S.deck }); };
-$('#slots').addEventListener('click', ev => {
-  const b = ev.target.closest('.kick');
-  if (b) send({ t: 'kick', side: +b.dataset.side });
-});
-$('#helpBtn').onclick = () => { uiSfx('click'); toggleHelp(true); };
+// the lobby buttons (ready, start, solo, kick, help, tutorial) are wired in lobby.js
 $('#helpClose').onclick = () => toggleHelp(false);
 $('#helpOv').addEventListener('click', ev => { if (ev.target.id === 'helpOv') toggleHelp(false); });
-// a clicked button never keeps focus, so Enter or Space cannot fire it again during play
-document.addEventListener('click', ev => { const b = ev.target.closest && ev.target.closest('button'); if (b) b.blur(); });
+// during play a clicked button never keeps focus, so Enter or Space cannot fire it again (the lobby keeps focus for keyboard users)
+document.addEventListener('click', ev => { const b = S.inGame && ev.target.closest && ev.target.closest('button'); if (b) b.blur(); });
 // the board canvas follows its box (the top bar can wrap without a window resize)
 if (window.ResizeObserver) new ResizeObserver(() => { if (S.inGame) resize(); }).observe($('#board'));
 applyOpt();
@@ -30,7 +25,7 @@ uiCrown($('#logoCrown'), 'win');
 drawLobbyBg();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => {
   if (typeof SPR !== 'undefined') SPR.clear();
-  if (typeof ICON_URL !== 'undefined') { ICON_URL.clear(); staticIcons(); if (S.defs) renderDeck(); }
+  if (typeof ICON_URL !== 'undefined') { ICON_URL.clear(); staticIcons(); if (S.defs) { renderDeck(); renderSettings(true); } }
   if (typeof BOARD_KEY !== 'undefined') BOARD_KEY = '';
 });
 connect();

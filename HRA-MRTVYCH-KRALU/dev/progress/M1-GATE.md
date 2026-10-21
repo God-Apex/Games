@@ -1,0 +1,7 @@
+- [x] requests applied (lan_ips sorted, hashorder allow trimmed)
+- [x] run_fast GREEN, golden 20/20, fuzz 0 fail
+- [x] browser 8097 OK
+- [ ] perf: 1st run 1.367 FAIL (browser running in parallel) -> rerun
+- [x] perf rerun 0.984 OK
+- [x] Czech review (Ruiny desc, Přežití desc)
+- [x] PROGRESS.md written. GATE PASS

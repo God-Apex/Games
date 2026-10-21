@@ -1,0 +1,12 @@
+# M2-GATE progress
+- [x] requests applied: modes Alfa `in WALK`, VERSION 0.9, send_me name=c.name. Quit end stats: server counts OK (deploy increments units) -> check in browser
+- [x] perf --compare --b7: ratio 1.035 OK, B7 OK (no load)
+- [x] run_fast GREEN 192 (after fixes), golden 20/20
+- [x] ai_ladder --gate: 83.8 / 98.8 / 51.2 OK, think avg 0.26 ms; fuzz 204798 actions 0 failures + lobby fuzz OK
+- browser: lobby 1366/1920 no hscroll OK, 5 previews distinct OK; perf demo=40 live median 2.91 mean 3.14 (eclipse phase 3.5-4.4); demo=120 mean 3.75 max 4.17. Most Vycvik vs Lehka game running in tab seed (bot JS)
+- [ ] browser 8097
+- [ ] czech, PROGRESS.md
+- [x] before/after M2-E board screenshots (scratchpad m2gate/before_b.png, after_b.png): same look; temp files removed
+- [x] browser: Most Vycvik Strateg vs Lehka ended 359 s; quit stats OK (not a bug); 0 console errors; tabs closed, server stopped, sink stopped
+- [x] czech: Most desc "jde" -> "lze"; Alfa on Most verified at 300 s
+- [x] PROGRESS.md updated. GATE PASS (demo=40 judged by cycle median 2.91; mean 3.14 noted as open)

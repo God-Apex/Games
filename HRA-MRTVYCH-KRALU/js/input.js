@@ -33,6 +33,9 @@ function updateInput() {
 }
 function releaseKeys() { S.keys = {}; if (S.inGame && S.mode === 'kral') updateInput(); }
 const helpShown = () => !$('#helpOv').classList.contains('hidden');
+// modal dialogs of the solo/meta modules (pause menu, welcome card, settings): while one is open the board gets no keys
+const MODAL_IDS = ['#pauseOv', '#setOv', '#welcomeOv'];
+const modalOpen = () => MODAL_IDS.some(s => { const el = $(s); return !!el && !el.classList.contains('hidden'); });
 function toggleHelp(force) {
   const open = force === undefined ? !helpShown() : force;
   $('#helpOv').classList.toggle('hidden', !open);
@@ -49,12 +52,24 @@ function kingKeyBlock(code) {
   return '';
 }
 window.addEventListener('keydown', ev => {
-  const code = ev.code;
-  if (ev.target.tagName === 'INPUT' && ev.target.type === 'text') return;
+  const code = ev.code, tag = ev.target.tagName;
+  if ((tag === 'INPUT' && ev.target.type === 'text') || tag === 'SELECT') return;
   if (ev.ctrlKey || ev.altKey || ev.metaKey) return;
+  if (code === 'F1') { ev.preventDefault(); if (!ev.repeat && !modalOpen()) toggleHelp(); return; }
   if (code === 'Escape' && optShown()) { $('#optPop').classList.add('hidden'); return; }
   if (code === 'KeyM') { if (!ev.repeat) toggleMute(); return; }
-  if (code === 'KeyH') { if (!ev.repeat) toggleHelp(); return; }
+  // a modal dialog owns the keyboard: Esc is handed to its module through the bus ('esc', 'modal'), nothing reaches the board
+  if (modalOpen()) {
+    if (code === 'Escape' && !ev.repeat) emit('esc', 'modal');
+    if (Object.keys(S.keys).some(k => S.keys[k])) releaseKeys();
+    return;
+  }
+  // H: relic squad for the Strateg in a match, help everywhere else (the Strateg opens help with F1)
+  if (code === 'KeyH') {
+    if (ev.repeat) return;
+    if (S.inGame && !S.ending && S.mode === 'strateg' && !helpShown() && !S.resOpen) useSquad(); else toggleHelp();
+    return;
+  }
   if (!S.inGame || S.ending) { if (code === 'Escape') toggleHelp(false); return; }
   if (code === 'Space') ev.preventDefault();
   // modal overlays (Help, Research): only Esc, H, M and V work, nothing reaches the board behind them
@@ -79,7 +94,8 @@ window.addEventListener('keydown', ev => {
     if (helpShown()) toggleHelp(false);
     else if (S.choose) { S.choose = null; renderSide(); hud(S.snap); }
     else if (S.resOpen) toggleResearch(false);
-    else cancelPick();
+    else if (S.pick || S.sel) cancelPick();
+    else if (S.solo) emit('esc', 'idle');          // nothing to cancel: modes.js opens the pause menu
     return;
   }
   if (code === 'KeyV') return toggleResearch();
@@ -97,13 +113,20 @@ window.addEventListener('keydown', ev => {
   if (code === 'KeyU') return keyUpgrade();
   const e = S.sel && S.ents.get(S.sel);
   if (code === 'KeyX' || code === 'Delete') return e ? doSell(e) : refuse('Nejdřív klikni na svou stavbu.');
-  if ((code === 'KeyA' || code === 'KeyB') && e && e.lvl === 2 && e.kind !== 'zed') refuse('Cestu vybereš takto: U a pak A nebo B.');
+  if ((code === 'KeyA' || code === 'KeyB') && e && e.lvl === 2 && !isWallKind(e.kind)) refuse('Cestu vybereš takto: U a pak A nebo B.');
 });
 window.addEventListener('keyup', ev => {
   if (KING_KEYS.includes(ev.code) && S.keys[ev.code]) { S.keys[ev.code] = false; if (S.inGame && S.mode === 'kral') updateInput(); }
 });
 window.addEventListener('blur', releaseKeys);
 
+// "Kanál: jednotky a zombie jsou tu rychlejší" -> bold name plus the rest; '' for plain floor and rubble (handled apart)
+function terrainTip(ch) {
+  const t = typeof TERRAIN !== 'undefined' ? TERRAIN[ch] : null;
+  if (!t || !t.tip || ch === '#') return '';
+  const i = t.tip.indexOf(': ');
+  return i < 0 ? esc(t.tip) : `<b>${esc(t.tip.slice(0, i))}</b>${esc(t.tip.slice(i))}`;
+}
 function updateTip() {
   const tipEl = $('#tip');
   const c = S.hover;
@@ -125,6 +148,7 @@ function updateTip() {
         + (ch[0] || ch[1] ? ` · sbíráš ${Math.round(ch[S.side] * 100)} %, soupeř ${Math.round(ch[1 - S.side] * 100)} %` : '');
   } else if (ter(c.x, c.y) === '#') t = own(c.x) ? `<b>Trosky</b>: klikni pro rozebrání (+25 ${SVG.s}, 4 s)` : '<b>Trosky</b>: neprůchozí';
   else if (z && S.snap.rl && c.x >= z[0] && c.x <= z[1] && c.y >= z[2] && c.y <= z[3]) t = `<b>Relikvie</b>: obsaď ji na 5 s jen svými jednotkami nebo Králem. Dává +2 ${SVG.e}/s a každých 40 s ${SVG.v}.`;
+  else if (terrainTip(ter(c.x, c.y))) t = terrainTip(ter(c.x, c.y)) + (inMist(c.x) ? ' · <b>Mlha</b>: odtud lezou zombie' : '');
   else if (!visible(c.x, c.y)) {
     const g = [...S.ghosts.values()].find(g => g.cx === c.x && g.cy === c.y);
     t = g ? `<b>${esc(S.defs[g.kind].name)}</b> (naposledy viděno)` : 'Neprozkoumáno: postav Hlásku, pošli dron nebo jednotky';
@@ -140,7 +164,7 @@ function kralBlocked(x, y) {
   for (let cy = Math.floor(y - r + 0.5); cy <= Math.floor(y + r + 0.5); cy++) {
     for (let cx = Math.floor(x - r + 0.5); cx <= Math.floor(x + r + 0.5); cx++) {
       if (cx < 0 || cy < 0 || cx >= S.W || cy >= S.H) continue;
-      if (ter(cx, cy) === '#' || barrier(cx, cy)) return true;
+      if (!terWalk(ter(cx, cy)) || barrier(cx, cy)) return true;
       const b = S.bmap.get(cx + ',' + cy);
       if (b && b.side !== S.side && b.kind !== 'mina') return true;
     }
@@ -169,7 +193,9 @@ function predictKing(dt) {
   const kr = S.snap.kr || {};
   let sp = K().speed * (kr.blk ? 0.4 : 1) / (kr.sf || (me.flags & 64 ? 1.4 : 1));
   if (mx && my) sp *= 0.7071;
-  const step = sp * dt, p = S.kp;
+  const p = S.kp;
+  if (ter(Math.max(0, Math.min(S.W - 1, Math.round(p.x))), Math.max(0, Math.min(S.H - 1, Math.round(p.y)))) === '~') sp *= 1.25;   // canal: the King runs faster (as on the server)
+  const step = sp * dt;
   const stuck = kralBlocked(p.x, p.y);
   const nx = p.x + mx * step;
   if (stuck || !kralBlocked(nx, p.y)) p.x = nx;

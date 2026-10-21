@@ -1,15 +1,71 @@
 'use strict';
 /* ---------------- geometry ---------------- */
 const cv = $('#cv'), ctx = cv.getContext('2d');
+// DPR is the render scale RS (device pixels per CSS pixel of the canvas), set by the quality level; the browser upscales.
 let CS = 40, OX = 0, OY = 0, DPR = 1;
 function resize() {
   const r = cv.getBoundingClientRect();
-  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  DPR = renderScale(r.width, r.height);
   cv.width = Math.max(1, Math.round(r.width * DPR)); cv.height = Math.max(1, Math.round(r.height * DPR));
   const cols = S.W + 2;
   CS = Math.floor(Math.min(r.width / cols, r.height / S.H));
   OX = Math.floor((r.width - CS * cols) / 2); OY = Math.floor((r.height - CS * S.H) / 2);
   SPR.clear(); BOARD_KEY = ''; FOG_KEY = ''; VIG.clear(); THR.length = 0; FXS.scarT = 0;
+}
+
+/* ---------------- render quality: Q2 Vysoká, Q1 Střední, Q0 Nízká; hmk_opt.q = 'auto'|2|1|0 ---------------- */
+// Automaticky starts a match at the level saved in hmk_qa ({q, n}), steps down when the median frame is over 18 ms and
+// never steps up during a match; every 5th match starts one level higher to re-probe. ?q=0|1|2 pins a level (dev).
+const QUAL = { lvl: 2, auto: true, iv: [], chk: 0, prev: 0, pin: /^[012]$/.test(new URLSearchParams(location.search).get('q') || '') ? +new URLSearchParams(location.search).get('q') : null };
+const RAWOPT = { o: {}, t: -1e9 };
+// an hmk_opt key: OPT/S.opt first (loadOpt in base.js), then the stored object (keys loadOpt does not validate yet)
+function ropt(k, d) {
+  const o = (typeof OPT !== 'undefined' && OPT) || S.opt || {};
+  if (o[k] !== undefined) return o[k];
+  const now = performance.now();
+  if (now - RAWOPT.t > 1000) { RAWOPT.t = now; try { RAWOPT.o = JSON.parse(load('hmk_opt', '{}')) || {}; } catch (e) { RAWOPT.o = {}; } }
+  return RAWOPT.o[k] !== undefined ? RAWOPT.o[k] : d;
+}
+function qualMode() { const q = ropt('q', 'auto'); return q === 0 || q === 1 || q === 2 ? q : /^[012]$/.test(q) ? +q : 'auto'; }
+function renderScale(w, h) {
+  const d = window.devicePixelRatio || 1;
+  return QUAL.lvl >= 2 ? Math.min(d, 2, Math.sqrt(2.2e6 / Math.max(1, w * h))) : QUAL.lvl === 1 ? Math.min(d, 1) : 0.75;
+}
+function setQual(l) {
+  QUAL.iv.length = 0; QUAL.chk = performance.now();
+  pMax = l === 0 ? 300 : PMAX;
+  if (l !== QUAL.lvl) { QUAL.lvl = l; if (S.inGame) resize(); }
+}
+function loadQA() { try { const v = JSON.parse(load('hmk_qa', '{}')) || {}; return { q: [0, 1, 2].includes(v.q) ? v.q : 2, n: v.n | 0 }; } catch (e) { return { q: 2, n: 0 }; } }
+// first snapshot of a match
+function qualityStart() {
+  RAWOPT.t = -1e9;
+  const q = QUAL.pin !== null ? QUAL.pin : qualMode();
+  QUAL.auto = q === 'auto';
+  if (!QUAL.auto) { setQual(q); return; }
+  const qa = loadQA(), n = qa.n + 1;
+  const lvl = n % 5 === 0 && qa.q < 2 ? qa.q + 1 : qa.q;
+  save('hmk_qa', JSON.stringify({ q: lvl, n }));
+  setQual(lvl);
+}
+// settings changed mid-match (M4-C): a fixed level applies at once, Automaticky keeps the current level
+function qualityApply() {
+  RAWOPT.t = -1e9;
+  const q = QUAL.pin !== null ? QUAL.pin : qualMode();
+  QUAL.auto = q === 'auto';
+  setQual(QUAL.auto ? QUAL.lvl : q);
+}
+const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
+function qualityWatch(now) {
+  const dt = now - QUAL.prev; QUAL.prev = now;
+  if (dt > 0 && dt < 250) { QUAL.iv.push(dt); if (QUAL.iv.length > 120) QUAL.iv.shift(); }
+  if (!QUAL.auto || now - QUAL.chk < 2000) return;
+  QUAL.chk = now;
+  if (document.visibilityState !== 'visible' || FXS.fin || QUAL.iv.length < 120 || QUAL.lvl === 0 || median(QUAL.iv) <= 18) return;
+  const l = QUAL.lvl - 1;
+  save('hmk_qa', JSON.stringify({ q: l, n: loadQA().n }));
+  setQual(l);
+  if (typeof toast === 'function') toast('Kvalita obrazu snížena kvůli plynulosti (Nastavení › Obraz).', 'warn');
 }
 window.addEventListener('resize', resize);
 const vx = x => S.side === 0 ? x : S.W - 1 - x;
@@ -32,8 +88,11 @@ const barrier = (x, y) => !!(S.snap && x >= S.mist[0] && x <= S.mist[1] && S.sna
 function entsAt(x, y) { const r = []; for (const e of S.ents.values()) if (e.cx === x && e.cy === y) r.push(e); return r; }
 function crateAt(x, y) { return S.snap ? S.snap.cr.find(c => c[1] === x && c[2] === y) : null; }
 
+// terrain classes (maps.js isWalk/isBuild when loaded; the same sets as the server's WALK/BUILD otherwise)
+const terWalk = ch => typeof isWalk === 'function' ? isWalk(ch) : '.~^='.includes(ch);
+const terBuild = ch => typeof isBuild === 'function' ? isBuild(ch) : ch === '.' || ch === '^';
 function canPlace(k, x, y) {
-  if (!own(x) || inMist(x) || ter(x, y) !== '.' || locked(k)) return false;
+  if (!own(x) || inMist(x) || !terBuild(ter(x, y)) || locked(k)) return false;
   const here = entsAt(x, y);
   if (S.defs[k].cat === 'b') return here.length === 0;
   return !here.some(e => S.defs[e.kind].cat !== 'b' || e.side !== S.side);
@@ -46,7 +105,7 @@ function canTarget(p, x, y) {
     return visible(x, y);
   }
   const t = S.defs[p.id].target;
-  if (t === 'vis') return visible(x, y) && (p.id !== 'navnada' || ter(x, y) === '.');
+  if (t === 'vis') return visible(x, y) && (p.id !== 'navnada' || terWalk(ter(x, y)));
   if (t === 'mist') return x >= S.mist[0] && x <= S.mist[1];
   return true;
 }
@@ -60,10 +119,10 @@ function fxOpts() {
 const FXS = {
   o: fxOpts(), vt: 0, dt: 0, rdt: 0, trauma: 0, tb: [], freeze: 0, slowUntil: 0, flash: null, flash2: 0, bolt: 0, fin: null,
   tele: -1e9, nums: [], dead: [], decals: [], scarT: 0, crates: new Map(), planes: new Map(), aura: [-1e9, -1e9],
-  thHit: [-1e9, -1e9], thRow: [4, 4], band: -1e9, sweep: null, outEnd: -1e9, dark: 0, words: 0,
+  thHit: [-1e9, -1e9], thRow: [4, 4], band: -1e9, sweep: null, outEnd: -1e9, dark: 0, words: 0, raise: new Map(),
 };
 function resetFx() {
-  pN = 0; S.fx = []; S.lasers = []; S.aims.clear(); FXS.crates.clear(); FXS.planes.clear();
+  pN = 0; S.fx = []; S.lasers = []; S.aims.clear(); FXS.crates.clear(); FXS.planes.clear(); FXS.raise.clear();
   Object.assign(FXS, { trauma: 0, tb: [], freeze: 0, slowUntil: 0, flash: null, flash2: 0, tele: -1e9, nums: [], dead: [], decals: [],
     scarT: 0, aura: [-1e9, -1e9], thHit: [-1e9, -1e9], thRow: [4, 4], promoAt: null, bolt: 0, band: -1e9, sweep: null, outEnd: -1e9, dark: 0, words: 0 });
 }
@@ -78,7 +137,7 @@ function addTrauma(v, full = true) {
   FXS.trauma = Math.min(1, FXS.trauma + v);
 }
 function hitStop(ms) { if (!FXS.o.calm) FXS.freeze = Math.max(FXS.freeze, performance.now() + ms); }
-function screenFlash(a, ms, col = '#fff1c4') { if (FXS.o.flash) FXS.flash = { t0: performance.now(), a, ms, col }; }
+function screenFlash(a, ms, col = '#fff1c4') { if (FXS.o.flash && QUAL.lvl > 0) FXS.flash = { t0: performance.now(), a, ms, col }; }
 const mineAt = (x, side) => side === S.side || (x >= 0 && x < S.W && own(Math.round(x)));
 
 /* ---------------- small drawing helpers ---------------- */
@@ -169,11 +228,11 @@ function flameAt(X, Y, s, now, seed) {
 
 /* ---------------- particles: fixed pool; matter drawn normally, light additively ---------------- */
 const PMAX = 700, PART = Array.from({ length: PMAX }, () => ({}));
-let pN = 0;
+let pN = 0, pMax = PMAX;   // pMax: the live cap (300 at Q0)
 const DOT = 0, SPARK = 1, CHIP = 2, GEM = 3, IMG = 4;
 function spray(x, y, n, o) {
-  if (pN > PMAX * 0.5) n = Math.ceil(n * (PMAX - pN) / (PMAX * 0.5));   // graceful thinning near the cap
-  for (let i = 0; i < n && pN < PMAX; i++) {
+  if (pN > pMax * 0.5) n = Math.ceil(n * (pMax - pN) / (pMax * 0.5));   // graceful thinning near the cap
+  for (let i = 0; i < n && pN < pMax; i++) {
     const p = PART[pN++], v = (o.sp || 0) * (0.35 + Math.random() * 0.65), j = o.jit || 0;
     const a = o.dir === undefined ? Math.random() * TAU : o.dir + (Math.random() - 0.5) * (o.spread || 0);
     p.x = x + (Math.random() - 0.5) * j; p.y = y + (Math.random() - 0.5) * j; p.z = o.z || 0;
@@ -195,12 +254,12 @@ function stepParts(dt) {
   }
 }
 function drawParts(light) {
-  const t = FXS.vt;
+  const t = FXS.vt, low = light && QUAL.lvl === 0;   // Q0: light particles without additive glows
   let fs = '';
-  ctx.globalCompositeOperation = light ? 'lighter' : 'source-over';
+  ctx.globalCompositeOperation = light && !low ? 'lighter' : 'source-over';
   for (let i = 0; i < pN; i++) {
     const p = PART[i];
-    if (p.light !== light || t < p.t0) continue;
+    if (p.light !== light || t < p.t0 || (low && p.shape === DOT)) continue;
     const k = 1 - (t - p.t0) / p.life, X = px(p.x), Y = py(p.y) - p.z * CS;
     const s = p.size * CS * (p.grow ? 1 + (1 - k) * p.grow : 0.5 + k * 0.5);
     ctx.globalAlpha = p.a * Math.min(1, k * 2);
@@ -225,12 +284,15 @@ function drawParts(light) {
 const dust = (x, y, n, o = {}) => spray(x, y, n, Object.assign({ col: '#3a332c', sp: 0.9, life: 650, size: 0.16, grow: 1.6, drag: 0.88, a: 0.55 }, o));
 
 /* ---------------- board layer (static, cached) ---------------- */
-let BOARD = null, BOARD_KEY = '', FOG = null, FOG_KEY = '', HATCH = null, SCARS = null, DARK = null;
+// BOARD (= BASE): floor, terrain, rubble, fences, Mist tint and the base vignette, rebuilt only when BOARD_KEY changes.
+// LAYER: BOARD plus the live decals; it is the one opaque blit per frame.
+let BOARD = null, BOARD_KEY = '', BOARD_N = 0, LAYER = null, LAYER_N = -1, FOG = null, FOG_KEY = '', FOGPAT = null, FOGPAT_K = -1, DARK = null;
+const boardTheme = () => S.theme || (S.map && S.map.theme) || 'ruiny';   // theme id (maps.js THEMES)
 function boardCanvas() {
-  const m = S.snap, [lo, hi] = mistRange();
-  const key = [m.ter, lo, hi, m.ni ? 1 : 0, S.side, CS, OX, OY, cv.width, cv.height].join('|');
+  const m = S.snap, [lo, hi] = mistRange(), theme = boardTheme();
+  const key = [m.ter, lo, hi, m.ni ? 1 : 0, S.side, CS, OX, OY, cv.width, cv.height, theme].join('|');
   if (key === BOARD_KEY && BOARD) return BOARD;
-  BOARD_KEY = key;
+  BOARD_KEY = key; BOARD_N++;
   if (!BOARD || BOARD.width !== cv.width || BOARD.height !== cv.height) BOARD = mkCanvas(cv.width, cv.height);
   const g = BOARD.getContext('2d'), W = S.W, H = S.H, b = Math.max(1, CS / 40);
   g.setTransform(DPR, 0, 0, DPR, 0, 0);
@@ -266,11 +328,19 @@ function boardCanvas() {
       g.restore();
     }
   }
+  // per-map floor tint (maps.js THEMES[theme].floor; Ruiny has none)
+  const tint = typeof mapTheme === 'function' && mapTheme(theme).floor;
+  if (tint) { g.fillStyle = tint; g.fillRect(OX + CS, OY, W * CS, H * CS); }
   // warm candle pools in front of both thrones, so the floor is never murky
   for (const tx of [-1, W]) {
     const X = px(tx), gr = g.createRadialGradient(X, OY + H * CS / 2, 0, X, OY + H * CS / 2, CS * 4);
     gr.addColorStop(0, 'rgba(255,184,90,0.07)'); gr.addColorStop(1, 'rgba(255,184,90,0)');
     g.fillStyle = gr; g.fillRect(X - CS * 4, OY, CS * 8, H * CS);
+  }
+  // 1.0 terrain (X w = ~ ^) from maps.js, painted over the floor tile; X, Y = the cell's top-left corner
+  if (typeof paintTerrain === 'function') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const ch = ter(x, y);
+    if (ch !== '.' && ch !== '#') paintTerrain(g, ch, px(x) - CS / 2, py(y) - CS / 2, CS, x, y, theme);
   }
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     if (ter(x, y) !== '#') continue;
@@ -294,16 +364,46 @@ function boardCanvas() {
   if (m.ni) { g.fillStyle = 'rgba(110,10,20,0.12)'; g.fillRect(OX, OY, (W + 2) * CS, H * CS); }
   g.strokeStyle = PAL.giltLo; g.lineWidth = 3; g.strokeRect(OX + CS - 1.5, OY + 1.5, W * CS + 3, H * CS - 3);
   g.strokeStyle = rgba(PAL.giltHi, 0.4); g.lineWidth = 1; g.strokeRect(OX + CS + 2.5, OY + 4.5, W * CS - 5, H * CS - 9);
+  // Mist tint (night: blood red), then the base vignette at a fixed alpha (under the units, no pulse)
+  g.fillStyle = m.ni ? 'rgba(120,20,24,0.16)' : 'rgba(185,203,191,0.06)';
+  g.fillRect(Math.min(px(lo), px(hi)) - CS / 2, OY, (hi - lo + 1) * CS, H * CS);
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  const vw = BOARD.width, vh = BOARD.height, vg = g.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.35, vw / 2, vh / 2, Math.hypot(vw, vh) * 0.6);
+  vg.addColorStop(0, 'rgba(8,4,2,0)'); vg.addColorStop(1, 'rgba(8,4,2,1)');
+  g.globalAlpha = 0.58; g.fillStyle = vg; g.fillRect(0, 0, vw, vh); g.globalAlpha = 1;
   return BOARD;
+}
+// BOARD + decals; the 1 s sweep rebuilds it only when a decal changed its alpha step or expired
+function layerCanvas(now) {
+  const b = boardCanvas();
+  if (!LAYER || LAYER.width !== b.width || LAYER.height !== b.height) { LAYER = mkCanvas(b.width, b.height); LAYER_N = -1; }
+  let dirty = LAYER_N !== BOARD_N || !FXS.scarT;
+  if (!FXS.scarT || now - FXS.scarT > 1000) {
+    FXS.scarT = now || 1;
+    const keep = [];
+    for (const d of FXS.decals) { const q = decalStep(d); if (q !== d.q) dirty = true; if (q > 0) keep.push(d); }
+    FXS.decals = keep;
+  }
+  if (dirty) {
+    const g = LAYER.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+    g.drawImage(b, 0, 0);
+    g.setTransform(DPR, 0, 0, DPR, 0, 0);
+    for (const d of FXS.decals) { d.q = decalStep(d); paintDecal(g, d); }
+    LAYER_N = BOARD_N;
+  }
+  return LAYER;
 }
 function fogPaths() {
   const key = [S.snap.v, S.side, CS, OX, OY].join('|');
   if (key === FOG_KEY && FOG) return FOG;
   FOG_KEY = key;
   const cells = new Path2D(), edges = new Path2D();
+  let n = 0;
   for (let y = 0; y < S.H; y++) for (let x = 0; x < S.W; x++) {
     if (visible(x, y)) continue;
     const X = px(x) - CS / 2, Y = py(y) - CS / 2;
+    n++;
     cells.rect(X, Y, CS, CS);
     for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const nx = x + dx, ny = y + dy;
@@ -312,40 +412,69 @@ function fogPaths() {
       else { const ey = dy > 0 ? Y + CS : Y; edges.moveTo(X, ey); edges.lineTo(X + CS, ey); }
     }
   }
+  cells.area = n * CS * CS;   // CSS px², read by ?perf
   FOG = { cells, edges };
   return FOG;
 }
-function hatchPat() {
-  if (HATCH) return HATCH;
+// fog fill and hatch pre-blended into one 8x8 pattern (per-pixel alpha), so the fog cells are filled once
+function fogPat(strong) {
+  const k = strong ? 1 : 0;
+  if (FOGPAT && FOGPAT_K === k) return FOGPAT;
   const c = mkCanvas(8, 8), g = c.getContext('2d');
+  g.fillStyle = `rgba(9,7,6,${strong ? 0.9 : 0.8})`; g.fillRect(0, 0, 8, 8);
   g.strokeStyle = 'rgba(214,190,140,0.09)'; g.lineWidth = 1; g.beginPath();
   g.moveTo(0, 8); g.lineTo(8, 0); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
-  HATCH = ctx.createPattern(c, 'repeat');
-  return HATCH;
+  FOGPAT = ctx.createPattern(c, 'repeat'); FOGPAT_K = k;
+  return FOGPAT;
 }
+// red (low throne) and dark (eclipse warning) vignettes: 4 edge strips 0.2·min(w,h) thick, cached per size at quarter
+// resolution; the radial curve of 0.5 fades out over the inner half of each strip
 const VIG = new Map();
-function vigOf(kind) {
-  let c = VIG.get(kind);
-  if (c && c.width === cv.width && c.height === cv.height) return c;
-  c = mkCanvas(cv.width, cv.height);
-  const g = c.getContext('2d'), w = c.width, h = c.height;
-  const [r0, rgb] = kind === 'red' ? [0.3, '150,24,18'] : kind === 'dark' ? [0.18, '0,0,0'] : [0.35, '8,4,2'];
-  const gr = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * r0, w / 2, h / 2, Math.hypot(w, h) * 0.6);
-  gr.addColorStop(0, `rgba(${rgb},0)`); gr.addColorStop(1, `rgba(${rgb},1)`);
-  g.fillStyle = gr; g.fillRect(0, 0, w, h); VIG.set(kind, c);
-  return c;
+function vigStrips(kind) {
+  const W = cv.width, H = cv.height, key = kind + '|' + W + '|' + H;
+  let v = VIG.get(key);
+  if (v) return v;
+  const q = 4, t = Math.max(q, Math.round(0.2 * Math.min(W, H) / q) * q), w = Math.ceil(W / q), h = Math.ceil(H / q);
+  const [r0, rgb] = kind === 'red' ? [0.3, [150, 24, 18]] : [0.18, [0, 0, 0]];
+  const R0 = Math.min(W, H) * r0, R1 = Math.hypot(W, H) * 0.6;
+  const c = mkCanvas(w, h), g = c.getContext('2d'), img = g.createImageData(w, h), D = img.data;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const X = (x + 0.5) * q, Y = (y + 0.5) * q, s = Math.min(X, W - X, Y, H - Y);
+    if (s >= t) continue;
+    const a = clamp01((Math.hypot(X - W / 2, Y - H / 2) - R0) / (R1 - R0)), f = clamp01((t - s) / (0.5 * t)), i = (y * w + x) * 4;
+    D[i] = rgb[0]; D[i + 1] = rgb[1]; D[i + 2] = rgb[2]; D[i + 3] = Math.round(255 * a * f * f * (3 - 2 * f));
+  }
+  g.putImageData(img, 0, 0);
+  v = { c, t, q };
+  VIG.set(key, v);
+  return v;
+}
+function drawVig(kind, a) {   // screen space (identity transform)
+  const { c, t, q } = vigStrips(kind), W = cv.width, H = cv.height, tq = t / q, mid = H - 2 * t;
+  ctx.globalAlpha = a;
+  ctx.drawImage(c, 0, 0, W / q, tq, 0, 0, W, t);
+  ctx.drawImage(c, 0, (H - t) / q, W / q, tq, 0, H - t, W, t);
+  if (mid > 0) {
+    ctx.drawImage(c, 0, tq, tq, mid / q, 0, t, t, mid);
+    ctx.drawImage(c, (W - t) / q, tq, tq, mid / q, W - t, t, t, mid);
+  }
+  ctx.globalAlpha = 1;
 }
 
-/* ---------------- decals: scars baked into an offscreen canvas ---------------- */
+/* ---------------- decals: painted into LAYER; alpha in 4 steps (1, .75, .5, .25 of the linear curve) ---------------- */
+function decalStep(d) {
+  const age = FXS.vt - d.t0, a = d.type === 'rubble' ? clamp01((d.life - age) / (d.life * 0.2)) : 1 - age / d.life;
+  return a <= 0 ? 0 : Math.ceil(a * 4 - 1e-9) / 4;
+}
 function addDecal(type, x, y, life, s = 1) {
-  const d = { type, x, y, t0: FXS.vt, life, s, seed: Math.random() * 1e6 | 0 };
+  const d = { type, x, y, t0: FXS.vt, life, s, seed: Math.random() * 1e6 | 0, q: 1 };
   FXS.decals.push(d);
   if (FXS.decals.length > 60) { FXS.decals.shift(); FXS.scarT = 0; }
-  else if (SCARS && FXS.scarT) { const g = SCARS.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); paintDecal(g, d); }
+  else if (LAYER && FXS.scarT && LAYER_N === BOARD_N) { const g = LAYER.getContext('2d'); g.setTransform(DPR, 0, 0, DPR, 0, 0); paintDecal(g, d); }
 }
 function paintDecal(g, d) {
-  const age = FXS.vt - d.t0, a = d.type === 'rubble' ? clamp01((d.life - age) / (d.life * 0.2)) : 1 - age / d.life;
-  if (a <= 0) return;
+  const a = d.q;
+  if (!(a > 0)) return;
   const X = px(d.x), Y = py(d.y), r = CS * d.s;
   if (d.type === 'scorch') {
     const gr = g.createRadialGradient(X, Y, 0, X, Y, r * 0.55);
@@ -368,25 +497,15 @@ function paintDecal(g, d) {
     for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(X + (hash(d.seed, i, 9) - 0.5) * r * 0.5, Y + r * 0.2 + (hash(d.seed, i, 10) - 0.5) * r * 0.2, r * (0.04 + hash(d.seed, i, 11) * 0.06), 0, TAU); g.fill(); }
   }
 }
-function scarCanvas(now) {
-  if (!SCARS || SCARS.width !== cv.width || SCARS.height !== cv.height) { SCARS = mkCanvas(cv.width, cv.height); FXS.scarT = 0; }
-  if (now - FXS.scarT > 1000) {
-    FXS.scarT = now;
-    FXS.decals = FXS.decals.filter(d => FXS.vt - d.t0 < d.life);
-    const g = SCARS.getContext('2d');
-    g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, SCARS.width, SCARS.height); g.setTransform(DPR, 0, 0, DPR, 0, 0);
-    for (const d of FXS.decals) paintDecal(g, d);
-    FXS.scarN = FXS.decals.length;
-  }
-  return SCARS;
-}
 
 /* ---------------- snapshot -> presentation (fx, hit reactions, deaths, numbers, transitions) ---------------- */
 const FX_LIFE = { k: 260, q: 220, t: 240, s: 760, z: 240, f: 360, m: 300, b: 720, p: 950, g: 450, h: 800, c: 2000, o: 320,
-  v: 900, u: 900, r: 520, D: 340, U: 650, P: 1100, R: 1300, L: 1500, K: 450, w: 750 };
+  v: 900, u: 900, r: 520, D: 340, U: 650, P: 1100, R: 1300, L: 1500, K: 450, w: 750, H: 260, E: 800, M: 700, Z: 700, W: 500 };
+// side factions (FAC §6): every faction-aware sprite reads them through facOf()
+on('start', m => setSideFacs(m && m.fac));
 const HOP = { jezdec: 2.236, strelec: 1.414 };
 function renderOnSnap(m, prev, gone) {
-  if (!prev) resetFx();
+  if (!prev) { resetFx(); qualityStart(); }
   // no frame drawn for a while (background tab): drop the backlog so returning does not replay it all at once
   else if (performance.now() - lastT > 500) { pN = 0; S.fx.length = 0; S.lasers.length = 0; FXS.nums.length = 0; FXS.dead.length = 0; }
   FXS.o = fxOpts();
@@ -415,7 +534,7 @@ function onFx(f, gone, kid) {
   if (type === 'n') return onPlaced(f);
   const rec = { type, a, b, c, d, side, f, t0: vt, life: FX_LIFE[type] || 300, seed: Math.random() * 1e4 | 0 };
   S.fx.push(rec);
-  if ('ksmqtz'.includes(type)) {
+  if ('ksmqtzH'.includes(type)) {
     const t = nearest(c, d, 0.35, e => true);
     if (t) { const l = Math.hypot(c - a, d - b) || 1; t.hitDir = [(c - a) / l, (d - b) / l]; t.hitDirT = vt; }
   }
@@ -483,6 +602,18 @@ function onFx(f, gone, kid) {
       addTrauma(0.12, side === S.side);
       break;
     case 'P': FXS.promoAt = a + ',' + b; spray(a, b, 16, { col: PAL.giltHi, sp: 1.8, vy: -0.6, life: 800, size: 0.05, shape: SPARK, light: true }); break;
+    case 'H': spray(c, d, 4, { col: '#e9f2ff', sp: 1.8, life: 240, size: 0.04, shape: SPARK, light: true, delay: 200 }); break;
+    case 'E':
+      spray(a, b, 18, { col: '#e9f2ff', sp: 3, life: 420, size: 0.05, shape: SPARK, light: true });
+      spray(a, b, 8, { col: PAL.ghost, sp: 1.5, life: 600, size: 0.06, shape: SPARK, light: true, jit: 1.2 });
+      addTrauma(0.1, side === S.side || mineAt(a, -1));
+      break;
+    case 'M': dust(a, b, 12, { col: '#6c7a5a', sp: 1.3, life: 1000, size: 0.24, grow: 2.2, drag: 0.9, a: 0.5, jit: 1 }); break;
+    case 'Z':
+      FXS.raise.set(Math.round(a) + ',' + Math.round(b), vt);
+      spray(a, b + 0.25, 8, { col: '#4a3f33', sp: 1.2, vz: 2, g: 8, life: 600, size: 0.05, shape: CHIP, delay: 100 });
+      break;
+    case 'W': { const z = nearest(a, b, 0.7, e => catOf(e) === 'z'); if (z) z.turnT = vt; break; }
     case 'R':
       spray(a, b, 24, { col: TEAM[side].hi, sp: 2.6, life: 900, size: 0.07, light: true });
       spray(a, b, 12, { col: PAL.giltHi, vy: -1.2, sp: 0.5, life: 1100, size: 0.06, light: true, jit: 1.5 });
@@ -532,7 +663,7 @@ function onDeath(f, gone) {
   const mine = e.side === S.side, X = e.dx ?? x, Y = e.dy ?? y;
   if (cat === 'z') {
     const big = e.kind === 'obr' || e.kind === 'alfa';
-    FXS.dead.push({ corpse: 'z', c: sprZombie(e.kind, 0), x: X, y: Y, cy: Y, t0: vt, life: 450, face: e.face || 1, e });
+    FXS.dead.push({ corpse: 'z', c: sprZombie(e.kind, 0, 1, ownOf(e)), x: X, y: Y, cy: Y, t0: vt, life: 450, face: e.face || 1, e });
     spray(X, Y, big ? 16 : 8, { col: PAL.fleshD, sp: big ? 2.2 : 1.4, vz: 2, g: 9, life: 650, size: big ? 0.09 : 0.06, shape: CHIP, spin: 8 });
     addDecal('splat', X, Y, 20000, big ? 1.6 : 1);
     if (big) addDecal('splat', X + 0.3, Y + 0.1, 20000, 1.2);
@@ -567,7 +698,9 @@ function onEnt(e, prev) {
   if (e.rhp === undefined) {
     e.rhp = e.hp; e.rmax = e.maxhp; e.trav = 0; e.rest = 0; e.ang = e.side === S.side ? 0 : Math.PI; e.face = e.side === S.side ? 1 : -1;
     if (!prev) return;
-    if (cat === 'z' && inMist(e.cx) && visible(e.cx, e.cy)) { e.emergeT = vt; spray(e.x, e.y + 0.25, 6, { col: '#4a3f33', sp: 1.2, vz: 2, g: 8, life: 600, size: 0.05, shape: CHIP }); }
+    const rz = cat === 'z' ? FXS.raise.get(e.cx + ',' + e.cy) : undefined;
+    if (rz !== undefined && vt - rz < 1000) { FXS.raise.delete(e.cx + ',' + e.cy); e.emergeT = rz + 300; }
+    else if (cat === 'z' && inMist(e.cx) && visible(e.cx, e.cy)) { e.emergeT = vt; spray(e.x, e.y + 0.25, 6, { col: '#4a3f33', sp: 1.2, vz: 2, g: 8, life: 600, size: 0.05, shape: CHIP }); }
     else if (cat === 'k') { if (e.side === S.side || Math.abs(e.x - (e.side === 0 ? 0 : S.W - 1)) < 1.5) e.spawnT = vt; }
     else if (e.side === S.side && cat !== 'z' && since(e.spawnT) > 150 && !(e.kind === 'dama' && FXS.promoAt === e.cx + ',' + e.cy)) placed(e, cat === 'b');   // a promoted Dáma gets the crown burst, not a drop-in
     return;
@@ -657,7 +790,8 @@ const CAM = { k: 1, x: 0, y: 0 };
 function frame(now) {
   requestAnimationFrame(frame);
   const rdt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
-  if (!S.snap || !(S.inGame || FXS.fin) || !CS) return;
+  if (!S.snap || !(S.inGame || FXS.fin) || !CS) { QUAL.prev = 0; return; }
+  qualityWatch(now);
   FXS.o = fxOpts();
   if (FXS.fin) runFinale(now);
   const scale = FXS.fin && !FXS.o.calm ? 0.3 : now < FXS.slowUntil && now >= FXS.freeze ? 0.35 : 1;
@@ -675,7 +809,21 @@ function frame(now) {
   if (S.kp) { const me = S.ents.get(S.kp.id); if (me) { track(me, S.kp.x - me.dx, S.kp.y - me.dy); me.dx = S.kp.x; me.dy = S.kp.y; } }
   stepParts(dt);
   if (DEMO) { DEMO.fps.push(rdt * 1000); if (DEMO.fps.length > 120) DEMO.fps.shift(); }
+  if (PERF) PERF.begin();
   draw(now);
+  if (PERF) PERF.end();
+  if (DEMO) DEMO.hud();
+  if (PERF) PERF.hud();
+  if (ropt('fps', false)) fpsCorner();
+}
+// "Ukazovat FPS": a small corner counter with the quality level (screen space, top right)
+function fpsCorner() {
+  const md = median(QUAL.iv), text = `${md ? Math.round(1000 / md) : '–'} fps · Q${QUAL.lvl}${QUAL.auto ? ' auto' : ''}`;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  ctx.font = '700 14px "Alegreya Sans", Candara, sans-serif'; ctx.textBaseline = 'middle';
+  const w = ctx.measureText(text).width + 14, X = cv.width / DPR - w - 6;
+  ctx.fillStyle = 'rgba(11,8,6,0.75)'; ctx.fillRect(X, 6, w, 24);
+  ctx.fillStyle = PAL.giltHi; ctx.fillText(text, X + 7, 18.5);
 }
 requestAnimationFrame(frame);
 function track(e, mx, my) {
@@ -732,13 +880,20 @@ function draw(now) {
     z = 1 + 0.06 * p; fx0 = F.losers.length === 2 ? OX + (W + 2) * CS / 2 : px(F.losers[0] === 0 ? -1 : W); fy0 = OY + H * CS / 2;
   }
   CAM.k = DPR * z; CAM.x = (sx + fx0 * (1 - z)) * DPR; CAM.y = (sy + fy0 * (1 - z)) * DPR;
+  if (z === 1) { CAM.x = Math.round(CAM.x); CAM.y = Math.round(CAM.y); }   // whole device pixels keep the blit on the copy path
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   // the opaque board layer covers the whole canvas unless the camera shakes or zooms: skip the redundant clear (raster cost)
-  if (CAM.k !== DPR || CAM.x || CAM.y) { ctx.fillStyle = PAL.bg; ctx.fillRect(0, 0, cv.width, cv.height); }
+  // (shake: only the edge strips the shifted layer leaves bare; finale zoom: the whole canvas)
+  ctx.fillStyle = PAL.bg;
+  if (CAM.k !== DPR) ctx.fillRect(0, 0, cv.width, cv.height);
+  else {
+    if (CAM.x) ctx.fillRect(CAM.x > 0 ? 0 : cv.width + CAM.x, 0, Math.abs(CAM.x), cv.height);
+    if (CAM.y) ctx.fillRect(0, CAM.y > 0 ? 0 : cv.height + CAM.y, cv.width, Math.abs(CAM.y));
+  }
+  const layer = layerCanvas(now);
+  if (z === 1) { ctx.setTransform(1, 0, 0, 1, CAM.x, CAM.y); ctx.drawImage(layer, 0, 0); }   // one opaque, unscaled blit
+  else { ctx.setTransform(CAM.k, 0, 0, CAM.k, CAM.x, CAM.y); ctx.drawImage(layer, 0, 0, cv.width / DPR, cv.height / DPR); }
   ctx.setTransform(CAM.k, 0, 0, CAM.k, CAM.x, CAM.y);
-  ctx.drawImage(boardCanvas(), 0, 0, cv.width / DPR, cv.height / DPR);
-  const scars = scarCanvas(now);
-  if (FXS.scarN) ctx.drawImage(scars, 0, 0, cv.width / DPR, cv.height / DPR);
   showMist(now, lo, hi, m.ni);
   relicZone(m, now, false);
   showThrone(0, now); showThrone(1, now);
@@ -759,20 +914,16 @@ function draw(now) {
   }
   for (const e of S.ents.values()) overlay(e, now);
   for (const d of m.dr) showDrone(d, now);
+  for (const c of m.mc || []) showCloud(c, now);
   drawParts(false);
-  if (m.out[S.side] > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    ctx.fillRect(S.side === 0 ? OX : px(W - S.half) - CS / 2, OY, (S.half + 1) * CS, H * CS);
-  }
-  darkness(m, now);
+  shade(m, now);
   drawFx(now);
   drawParts(true);
   showNums();
-  const fog = fogPaths();
-  ctx.fillStyle = 'rgba(9,7,6,0.80)'; ctx.fill(fog.cells);
-  ctx.fillStyle = hatchPat(); ctx.fill(fog.cells);
+  const fog = fogPaths(), fogc = !!ropt('fogc', false);
+  ctx.fillStyle = fogPat(fogc); ctx.fill(fog.cells);
   ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 4; ctx.stroke(fog.edges);
-  ctx.strokeStyle = rgba(PAL.gilt, 0.55); ctx.lineWidth = 1.2; ctx.setLineDash([2, 4]); ctx.stroke(fog.edges); ctx.setLineDash([]);
+  ctx.strokeStyle = rgba(PAL.gilt, 0.55); ctx.lineWidth = fogc ? 2 : 1.2; ctx.setLineDash([2, 4]); ctx.stroke(fog.edges); ctx.setLineDash([]);
   for (const g of S.ghosts.values()) {
     if (visible(g.cx, g.cy)) continue;
     const X = px(g.cx), Y = py(g.cy);
@@ -793,16 +944,13 @@ function draw(now) {
   }
   showPreview(now);
   showSelection(now);
-  if (m.kr && m.kr.dead > 0) {
-    ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(OX, OY, (W + 2) * CS, H * CS);
+  if (m.kr && m.kr.dead > 0) {   // the 0.2 dim is part of shade()
     const X = px(S.side === 0 ? -1 : W), Y = py((H - 1) / 2), rs = (S.defs.kral && S.defs.kral.respawn) || 15;
     arcP(X, Y, CS * 0.75, 1 - m.kr.dead / rs, PAL.giltHi, 3);
     ink(String(Math.ceil(m.kr.dead)), X, Y - CS * 1.05, CS * 0.36, PAL.giltHi);
   }
   // screen space: no shake from here on
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.globalAlpha = 0.55 + 0.07 * (0.5 + 0.5 * Math.sin(now / 900) * Math.sin(now / 370));
-  ctx.drawImage(vigOf('base'), 0, 0);
   const hp = m.th[S.side] / S.throneMax;
   if (hp < 0.5) {
     let a = 0.06;
@@ -812,12 +960,9 @@ function draw(now) {
       if (o.calm) a *= 0.5;
       a = Math.max(0.06, a);
     }
-    ctx.globalAlpha = a; ctx.drawImage(vigOf('red'), 0, 0);
+    drawVig('red', a);
   }
-  if (m.ec && m.ec[0] === 1 && m.ec[1] <= 15) {
-    ctx.globalAlpha = 0.45 * (1 - m.ec[1] / 15) * (0.85 + 0.15 * Math.sin(now / 160));
-    ctx.drawImage(vigOf('dark'), 0, 0);
-  }
+  if (m.ec && m.ec[0] === 1 && m.ec[1] <= 15) drawVig('dark', 0.45 * (1 - m.ec[1] / 15) * (0.85 + 0.15 * Math.sin(now / 160)));
   ctx.globalAlpha = 1;
   lightning(m, now);
   const fl = FXS.flash;
@@ -826,7 +971,6 @@ function draw(now) {
     ctx.fillStyle = fl.col; ctx.fillRect(0, 0, cv.width, cv.height);
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
-  if (DEMO) DEMO.hud();
 }
 function lightning(m, now) {
   if (!m.ni || !FXS.o.flash) { FXS.bolt = 0; return; }
@@ -863,8 +1007,8 @@ function showMist(now, lo, hi, night) {
   }
   const x0 = Math.min(px(lo), px(hi)) - CS / 2, w = (hi - lo + 1) * CS, h = S.H * CS, wisps = wispsOf(night ? PAL.blood : PAL.mist);
   ctx.save(); ctx.beginPath(); ctx.rect(x0 - CS * 0.3, OY, w + CS * 0.6, h); ctx.clip();
-  ctx.fillStyle = night ? 'rgba(120,20,24,0.16)' : 'rgba(185,203,191,0.06)'; ctx.fillRect(x0, OY, w, h);
-  const n = Math.round(14 * (hi - lo + 1) / 4), face = Math.floor(now / 6000) % Math.max(1, n);
+  // (the Mist tint itself is baked into BOARD)
+  const n = Math.round(14 * (hi - lo + 1) / 4 * (QUAL.lvl === 0 ? 0.5 : 1)), face = Math.floor(now / 6000) % Math.max(1, n);
   for (let i = 0; i < n; i++) {
     const tt = now / 1000 * (0.015 + hash(i, 1, 2) * 0.02);
     const cx = x0 - CS + ((hash(i, 5, 6) + tt) % 1) * (w + CS * 2), cy = OY + ((hash(i, 7, 8) + Math.sin(tt * 3 + i) * 0.03 + 1) % 1) * h;
@@ -1009,14 +1153,31 @@ function auraRings(m, now) {
     ring(X, Y, R, col, 2, pulse, [10, 8], -now / 30, 2);
   }
 }
-function darkness(m, now) {
+// one quarter-resolution shade blit: darkness (eclipse, night) with light holes, the outage dim (0.18, own half) and the
+// dim while the own King is dead (0.2); drawn only when one of them is active
+function shade(m, now) {
   const want = m.ni ? 0.6 : m.ec && m.ec[0] === 2 ? 0.55 : 0;
   FXS.dark += (want - FXS.dark) * Math.min(1, FXS.rdt * (want > FXS.dark ? (m.ni ? 0.6 : 1.4) : 1.5));
-  if (FXS.dark < 0.01) return;
+  const dark = FXS.dark >= 0.01, out = m.out[S.side] > 0, kd = !!(m.kr && m.kr.dead > 0);
+  if (!dark && !out && !kd) return;
+  const oX = (S.side === 0 ? OX : px(S.W - S.half) - CS / 2), oW = (S.half + 1) * CS;
+  if (!dark) {   // flat dims only: fill them straight (the outage covers half the board, no full-board blit)
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    if (out) ctx.fillRect(oX, OY, oW, S.H * CS);
+    if (kd) { ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(OX, OY, (S.W + 2) * CS, S.H * CS); }
+    return;
+  }
   const q = 4, w = Math.ceil((S.W + 2) * CS / q), h = Math.ceil(S.H * CS / q);
   if (!DARK || DARK.width !== w || DARK.height !== h) DARK = mkCanvas(w, h);
-  const g = DARK.getContext('2d'), hole = glowOf('#ffffff');
+  const g = DARK.getContext('2d');
   g.globalCompositeOperation = 'source-over'; g.globalAlpha = 1; g.clearRect(0, 0, w, h);
+  if (dark) darkHoles(g, m, now, q, w, h);
+  if (out) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect((oX - OX) / q, 0, oW / q, h); }
+  if (kd) { g.fillStyle = 'rgba(0,0,0,0.2)'; g.fillRect(0, 0, w, h); }
+  ctx.drawImage(DARK, OX, OY, w * q, h * q);
+}
+function darkHoles(g, m, now, q, w, h) {
+  const hole = glowOf('#ffffff');
   g.fillStyle = `rgba(4,3,10,${FXS.dark})`; g.fillRect(0, 0, w, h);
   g.globalCompositeOperation = 'destination-out';
   const L = (x, y, r, a) => { const R = r * CS / q; g.globalAlpha = a; g.drawImage(hole, (px(x) - OX) / q - R, (py(y) - OY) / q - R, R * 2, R * 2); };
@@ -1030,14 +1191,13 @@ function darkness(m, now) {
   }
   for (const r of m.rv) L(r[0], r[1], r[3] || 2.5, 0.7);
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-  ctx.drawImage(DARK, OX, OY, w * q, h * q);
 }
 
 /* ---------------- bodies ---------------- */
 function showBuilding(e, now) {
   // hidden (mine, masked): ART's 'hidden' variant already has a half-alpha body and a full-alpha dashed side rim
-  const hidden = e.flags & 128, m = S.snap, vt = FXS.vt, X = px(e.cx), Y = py(e.cy), ay = GROUND * CS;
-  const c = sprBuilding(e.kind, e.side, e.lvl, e.path, hidden ? 'hidden' : '');
+  const hidden = e.flags & 128, off = e.flags & 8192, m = S.snap, vt = FXS.vt, X = px(e.cx), Y = py(e.cy), ay = GROUND * CS;
+  const c = sprBuilding(e.kind, e.side, e.lvl, e.path, hidden ? 'hidden' : off ? 'off' : '');
   let sx = 1, sy = 1, ox = 0, oy = 0, a = 1;
   const sp = since(e.spawnT);
   if (sp < 480) {
@@ -1072,8 +1232,9 @@ function showBuilding(e, now) {
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
   }
   ctx.save(); ctx.translate(X + ox, Y + oy + ay); ctx.scale(sx * CS, sy * CS); ctx.translate(0, -GROUND);
-  if (!dark) liveBuilding(ctx, e, now);
+  if (!dark && !off) liveBuilding(ctx, e, now);
   ctx.restore(); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  if (off) crackle(X, Y, e.id, now);
   if (dark && Math.floor(now / 200) % 2) {
     const s = CS * 0.16;
     for (const [w, col] of [[5, INK], [2.5, PAL.rubric]]) { seg(X - s, Y - s, X + s, Y + s, col, w); seg(X + s, Y - s, X - s, Y + s, col, w); }
@@ -1130,9 +1291,10 @@ function showZombie(e, now) {
   const [ox, oy, s] = motion(e), f = e.face || 1;
   const rot = (moving ? Math.sin(now / 1000 * 2 * TAU + e.id) * 0.1 : Math.sin(now / 700 + e.id) * 0.03) + 0.06 * f;
   const bob = moving ? -Math.abs(Math.sin(now / 1000 * 2 * Math.PI + e.id)) * 0.03 * CS : 0;
-  const big = e.kind === 'obr' || e.kind === 'alfa', c = sprZombie(e.kind, moving ? Math.floor(e.trav * 3 + e.id) % 4 : 0);
+  const big = e.kind === 'obr' || e.kind === 'alfa', c = sprZombie(e.kind, moving ? Math.floor(e.trav * 3 + e.id) % 4 : 0, 1, ownOf(e));
   floorShadow(X, Y + ay, CS * (big ? 0.38 : 0.22), 0.4);
   const em = since(e.emergeT);
+  if (em < 0) return;   // a raised zombie waits for the hand (fx Z)
   if (em < 400) {
     const p = easeOut(em / 400), hgt = c.height / DPR;
     ctx.save(); ctx.beginPath(); ctx.rect(X - CS * 2, Y + ay - hgt, CS * 4, hgt); ctx.clip();
@@ -1140,9 +1302,41 @@ function showZombie(e, now) {
     ctx.restore();
     return;
   }
-  putSpr(c, X + ox, Y + oy + bob, 1, f * s, s, rot, ay);
+  const tt = since(e.turnT), flip = tt < 450 ? Math.cos(tt / 450 * TAU) : 1;   // fx W: the zombie turns (eyes flip)
+  putSpr(c, X + ox, Y + oy + bob, 1, f * s * flip, s, rot, ay);
   const ht = since(e.hitT);
-  if (ht < 90) putSpr(whiteOf(c), X + ox, Y + oy + bob, 0.85 * (1 - ht / 90), f * s, s, rot, ay);
+  if (ht < 90) putSpr(whiteOf(c), X + ox, Y + oy + bob, 0.85 * (1 - ht / 90), f * s * flip, s, rot, ay);
+}
+// owner side of an owned zombie (flag 2048, 4096 = side 1), else -1
+const ownOf = e => e.flags & 2048 ? (e.flags & 4096 ? 1 : 0) : -1;
+// EMP-off building: blue-white crackle lines (shape, not colour only), re-rolled every 90 ms
+function crackle(X, Y, id, now) {
+  const t = Math.floor(now / 90), r = CS * 0.42;
+  ctx.beginPath();
+  for (let i = 0; i < 3; i++) {
+    if (hash(t, i, id) < 0.25) continue;
+    let a = hash(i, t, id) * TAU, x = X + Math.cos(a) * r * 0.2, y = Y - CS * 0.15 + Math.sin(a) * r * 0.2;
+    ctx.moveTo(x, y);
+    for (let j = 1; j <= 4; j++) { a += (hash(t, j, i + id) - 0.5) * 1.6; x += Math.cos(a) * r * 0.22; y += Math.sin(a) * r * 0.22; ctx.lineTo(x, y); }
+  }
+  ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(11,8,6,0.8)'; ctx.lineWidth = 3.5; ctx.stroke();
+  ctx.strokeStyle = '#e9f2ff'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.globalCompositeOperation = 'lighter'; glow(X, Y - CS * 0.15, CS * 0.35, '#9fb8ff', 0.25 + 0.15 * hash(t, 7, id)); ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+}
+// Mor cloud [x, y, t, s]: a grey-green hatched 3x3 that thins as t (s left of 8) drops; dashed rim in the caster's enamel.
+function showCloud(c, now) {
+  const [x, y, t, s] = c, k = clamp01(t / 8), X = px(x), Y = py(y), h = CS * 1.5, step = CS * (0.16 + 0.22 * (1 - k));
+  ctx.save(); ctx.beginPath(); ctx.rect(X - h, Y - h, h * 2, h * 2); ctx.clip();
+  ctx.globalAlpha = 0.1 + 0.18 * k; ctx.fillStyle = '#6c7a5a'; ctx.fillRect(X - h, Y - h, h * 2, h * 2);
+  const off = (now / 60) % step;
+  ctx.beginPath();
+  for (let d = -h * 2 - step + off; d < h * 2; d += step) { ctx.moveTo(X - h + d, Y + h); ctx.lineTo(X + h + d, Y - h); }
+  ctx.globalAlpha = 0.3 + 0.45 * k; ctx.strokeStyle = '#a8b896'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.restore();
+  ctx.globalAlpha = 0.5 + 0.4 * k; ctx.setLineDash([5, 4]); ctx.lineDashOffset = -now / 50;
+  ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.strokeRect(X - h, Y - h, h * 2, h * 2);
+  ctx.strokeStyle = TEAM[s] ? TEAM[s].hi : '#a8b896'; ctx.lineWidth = 1.5; ctx.strokeRect(X - h, Y - h, h * 2, h * 2);
+  ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
 }
 function showKing(e, now) {
   const ay = GROUND * CS, X = px(e.dx), Y = py(e.dy), mine = e.side === S.side;
@@ -1251,7 +1445,8 @@ function flagFx(e, X, Y, r, now) {
     ctx.beginPath(); ctx.ellipse(X, Y - r * 1.55, r * 0.28, r * 0.15, 0, 0, TAU); ctx.fillStyle = INK; ctx.fill(); ctx.strokeStyle = PAL.rubric; ctx.lineWidth = 1.5; ctx.stroke();
     ctx.beginPath(); ctx.arc(X, Y - r * 1.55, r * 0.08, 0, TAU); ctx.fillStyle = PAL.rubric; ctx.fill();
   }
-  if (f & 16) {
+  if (f & 16 && e.kind === 'exo') ring(X, Y - r * 0.2, r + 6, '#e9f2ff', 1.5, 0.85, [5, 4], -now / 60, 1.5);   // Exo shield: a dashed bubble
+  else if (f & 16) {
     ring(X, Y, r + 5, PAL.giltHi, 1.5, 0.8, null, 0, 1.5);
     for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + now / 2000; seg(X + Math.cos(a) * (r + 2), Y + Math.sin(a) * (r + 2), X + Math.cos(a) * (r + 8), Y + Math.sin(a) * (r + 8), PAL.giltHi, 1.5, 0.8); }
   }
@@ -1454,6 +1649,51 @@ function drawFx(now) {
         if (f.c >= 3) { ctx.globalAlpha = 0.9 * (1 - p); ctx.drawImage(glowOf(RAR_COL[f.c]), X1 - CS * 0.6, Y1 - CS * 5, CS * 1.2, CS * 5.4); }
         break;
       case 'K': glow(X1, Y1, CS * 1.2, PAL.gilt, 1 - p); ring(X1, Y1, CS * 1.4 * easeOut(p), PAL.giltHi, 3, 1 - p); break;
+      case 'H': {   // hangar: a small bat dart along the shot line
+        const X2 = px(f.c), Y2 = py(f.d), h = clamp01(age / 200), ang = Math.atan2(Y2 - Y1, X2 - X1), hx = X1 + (X2 - X1) * h, hy = Y1 + (Y2 - Y1) * h;
+        if (h < 1) {
+          seg(X1 + (hx - X1) * 0.6, Y1 + (hy - Y1) * 0.6, hx, hy, 'rgba(233,242,255,0.5)', 1.5);
+          glow(hx, hy, CS * 0.3, '#e9f2ff', 0.7);
+          ctx.globalCompositeOperation = 'source-over';
+          putSpr(sprDrone(f.side, Math.floor(age / 50) % 2), hx, hy, 1, 0.45, 0.45, ang + Math.PI / 2);
+        } else glow(X2, Y2, CS * 0.2, '#e9f2ff', 1 - (age - 200) / 60);
+        break;
+      }
+      case 'E': {   // EMP: a 3x3 square outline flash, a white-violet ring and spark glyphs
+        const h = f.c * CS, e = easeOut(clamp01(age / 300));
+        glow(X1, Y1, CS * 1.6, PAL.ghostD, 0.5 * (1 - p));
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1 - p; ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.strokeRect(X1 - h, Y1 - h, h * 2, h * 2);
+        ctx.strokeStyle = '#e9f2ff'; ctx.lineWidth = 2.5; ctx.strokeRect(X1 - h, Y1 - h, h * 2, h * 2); ctx.globalAlpha = 1;
+        ring(X1, Y1, CS * 1.7 * e, PAL.ghost, 3, 1 - p, null, 0, 2);
+        ring(X1, Y1, CS * 1.45 * e, '#ffffff', 1.5, 1 - p);
+        if (p < 0.7) for (let i = 0; i < 6; i++) {
+          const a = i / 6 * TAU + f.seed, rr = h * (0.4 + 0.5 * hash(i, f.seed, 1)), x = X1 + Math.cos(a) * rr, y = Y1 + Math.sin(a) * rr, s = CS * 0.09;
+          ctx.beginPath(); ctx.moveTo(x - s, y - s); ctx.lineTo(x + s * 0.2, y - s * 0.1); ctx.lineTo(x - s * 0.2, y + s * 0.1); ctx.lineTo(x + s, y + s);
+          ctx.globalAlpha = 1 - p / 0.7; ctx.strokeStyle = INK; ctx.lineWidth = 3.5; ctx.stroke(); ctx.strokeStyle = '#e9f2ff'; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1;
+        }
+        break;
+      }
+      case 'M': {   // Mor cast: a grey-green swell (the cloud itself comes from snapshot mc)
+        glow(X1, Y1, CS * (0.8 + 1.2 * easeOut(p)), '#6c7a5a', 0.5 * (1 - p));
+        ctx.globalCompositeOperation = 'source-over';
+        ring(X1, Y1, CS * 1.5 * easeOut(clamp01(age / 400)), '#a8b896', 2, 1 - p, [3, 4]);
+        break;
+      }
+      case 'Z': {   // raise: a hand rises from the ground, then the zombie
+        ctx.globalCompositeOperation = 'source-over';
+        const up = age < 350 ? easeOut(age / 350) : age < 500 ? 1 : Math.max(0, 1 - (age - 500) / 200), gy = Y1 + CS * 0.28, hh = CS * 0.36 * up;
+        ctx.save(); ctx.beginPath(); ctx.rect(X1 - CS * 0.5, gy - CS, CS, CS); ctx.clip();
+        ctx.translate(X1, gy - hh); ctx.rotate(Math.sin(age / 90) * 0.12);
+        ctx.fillStyle = PAL.flesh; ctx.strokeStyle = PAL.zInk; ctx.lineWidth = 1.5;
+        ctx.fillRect(-CS * 0.04, 0, CS * 0.08, hh + 2); ctx.strokeRect(-CS * 0.04, 0, CS * 0.08, hh + 2);
+        ctx.beginPath(); for (const a of [-0.6, -0.2, 0.2, 0.6]) { ctx.moveTo(Math.sin(a) * CS * 0.03, 0); ctx.lineTo(Math.sin(a) * CS * 0.1, -CS * 0.1); }
+        ctx.lineWidth = 4; ctx.strokeStyle = PAL.zInk; ctx.stroke(); ctx.lineWidth = 2; ctx.strokeStyle = PAL.flesh; ctx.stroke();
+        ctx.restore();
+        ctx.globalAlpha = 1 - p; ctx.fillStyle = '#2a221b'; ctx.beginPath(); ctx.ellipse(X1, gy, CS * 0.2, CS * 0.06, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+        break;
+      }
+      case 'W': ctx.globalCompositeOperation = 'source-over'; ring(X1, Y1, CS * (0.3 + 0.35 * easeOut(p)), (TEAM[f.side] || TEAM[0]).hi, 2.5, 1 - p, null, 0, 2); break;
       case 'w': {
         FXS.words++;
         ctx.globalCompositeOperation = 'source-over';
@@ -1537,6 +1777,7 @@ function showSelection(now) {
   let r = d.range ? d.range + (se.lvl - 1) * 0.2 : 0;
   if (se.kind === 'plamen' && se.path === 'B') r = 2.6;
   if (S.snap.tech.includes('ing3') && r) r += 0.6;
+  if (r && d.cat === 'b' && ter(se.cx, se.cy) === '^') r += 1;   // raised ground: +1 range
   if (r) ring(X, Y, r * CS, PAL.giltHi, 1.5, 0.6, [2, 5], -now / 60);
 }
 function showPreview(now) {
@@ -1548,7 +1789,8 @@ function showPreview(now) {
     ok = canPlace(p.id, c.x, c.y) && (afford(costOf(p.id)) || freeOf(p.id));
     if (ok) {
       putSpr(S.defs[p.id].cat === 'b' ? sprBuilding(p.id, S.side, 1, '') : sprUnit(p.id, S.side, false, 1), X, Y, 0.55);
-      const r = p.id === 'hlaska' ? 4.5 : p.id === 'rusicka' ? 1.6 : S.defs[p.id].range;
+      let r = p.id === 'hlaska' ? 4.5 : p.id === 'rusicka' ? 1.6 : S.defs[p.id].range;
+      if (r && S.defs[p.id].cat === 'b' && ter(c.x, c.y) === '^') r += 1;
       if (r) ring(X, Y, r * CS, PAL.giltHi, 1.5, 0.6, [2, 5], -now / 60);
     }
   } else if (p) {
@@ -1564,6 +1806,64 @@ function showPreview(now) {
   if (!ok) hazard(X - CS / 2, Y - CS / 2, CS, CS, PAL.rubric, 0.4, 0, 8);
   cornerMarks(X, Y, CS * 0.94, ok ? (p ? PAL.giltHi : rgba(PAL.muted, 0.7)) : PAL.rubric);
 }
+
+/* ---------------- ?perf: raster accounting of the main canvas (works with ?demo) ---------------- */
+// Wraps drawImage, fillRect, fill and stroke on ctx. Dest area is counted in device pixels, clipped to the canvas for
+// axis-aligned transforms; fill(path) counts the area a path carries in .area (the fog cells), stroke counts calls only.
+// The HUD shows dest Mpx per frame, overdraw ×, the 'lighter' share, the draw JS ms, RS and Q (averages of 60 frames).
+// PERF.bench(n) draws n frames synchronously (for a hidden tab) and returns the same averages.
+const PERF = /[?&]perf\b/.test(location.search) ? (() => {
+  const P = { on: false, px: 0, lp: 0, calls: 0, t0: 0, hist: [] };
+  const dI = ctx.drawImage, fR = ctx.fillRect, fl = ctx.fill, st = ctx.stroke;
+  function add(c, x, y, w, h) {
+    if (!P.on) return;
+    P.calls++;
+    const t = c.getTransform();
+    let a;
+    if (!t.b && !t.c) {
+      const x0 = Math.max(0, Math.min(t.a * x, t.a * (x + w)) + t.e), x1 = Math.min(cv.width, Math.max(t.a * x, t.a * (x + w)) + t.e);
+      const y0 = Math.max(0, Math.min(t.d * y, t.d * (y + h)) + t.f), y1 = Math.min(cv.height, Math.max(t.d * y, t.d * (y + h)) + t.f);
+      a = Math.max(0, x1 - x0) * Math.max(0, y1 - y0);
+    } else a = Math.abs(w * h * (t.a * t.d - t.b * t.c));
+    P.px += a;
+    if (c.globalCompositeOperation === 'lighter') P.lp += a;
+  }
+  ctx.drawImage = function (img, ...a) {
+    if (a.length === 2) add(this, a[0], a[1], img.width, img.height);
+    else if (a.length === 4) add(this, a[0], a[1], a[2], a[3]);
+    else add(this, a[4], a[5], a[6], a[7]);
+    return dI.call(this, img, ...a);
+  };
+  ctx.fillRect = function (x, y, w, h) { add(this, x, y, w, h); return fR.call(this, x, y, w, h); };
+  ctx.fill = function (p, ...r) {
+    if (P.on) { P.calls++; if (p && p.area) { const t = this.getTransform(); P.px += p.area * Math.abs(t.a * t.d - t.b * t.c); } }
+    return fl.call(this, p, ...r);
+  };
+  ctx.stroke = function (...a) { if (P.on) P.calls++; return st.apply(this, a); };
+  P.begin = () => { P.px = P.lp = P.calls = 0; P.on = true; P.t0 = performance.now(); };
+  P.end = () => { P.on = false; P.hist.push([P.px, P.lp, performance.now() - P.t0, P.calls]); if (P.hist.length > 60) P.hist.shift(); };
+  P.avg = () => {
+    const n = P.hist.length || 1, s = [0, 0, 0, 0];
+    for (const h of P.hist) for (let i = 0; i < 4; i++) s[i] += h[i];
+    const area = cv.width * cv.height;
+    return { mpx: +(s[0] / n / 1e6).toFixed(2), over: +(s[0] / n / area).toFixed(2), lighter: +(s[1] / n / 1e6).toFixed(2),
+      ms: +(s[2] / n).toFixed(2), calls: Math.round(s[3] / n), rs: +DPR.toFixed(2), q: QUAL.lvl, cw: cv.width, ch: cv.height };
+  };
+  P.bench = (n = 60) => {
+    P.hist.length = 0;
+    for (let i = 0; i < n; i++) { FXS.vt += 16; FXS.dt = FXS.rdt = 0.016; stepParts(0.016); P.begin(); draw(performance.now()); P.end(); }
+    return P.avg();
+  };
+  P.hud = () => {
+    const a = P.avg(), text = `PERF · ${a.mpx} Mpx · ${a.over}× · lighter ${a.lighter} Mpx · kresba ${a.ms} ms · ${a.calls} volání · RS ${a.rs} · Q${a.q}`;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.font = '700 14px "Alegreya Sans", Candara, sans-serif'; ctx.textBaseline = 'middle';
+    const y = DEMO ? 34 : 6;
+    ctx.fillStyle = 'rgba(11,8,6,0.75)'; fR.call(ctx, 6, y, ctx.measureText(text).width + 16, 24);
+    ctx.fillStyle = PAL.giltHi; ctx.fillText(text, 14, y + 12.5);
+  };
+  return P;
+})() : null;
 
 /* ---------------- ?demo: showcase scene fed with synthetic snapshots (screenshots, fps check) ---------------- */
 // index.html?demo[=noc,strateg,konec,<entity count>] is opt-in only. The page still needs the game server for the card

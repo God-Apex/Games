@@ -35,22 +35,20 @@ function setErr(text, withButton) {
   const b = $('#reconnect');
   if (b) b.onclick = () => { retries = 0; connect(); };
 }
-function clearLobby() {
-  $('#slots').innerHTML = ''; $('#note').classList.add('hidden'); $('#urls').innerHTML = '';
-  S.ready = false; S.lobby = null; updateReady();
-}
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && !S.ws && !S.kicked && retries < MAX_RETRY && location.protocol !== 'file:') connect();
 });
 
+// Message dispatch. The lobby and the catalogs are handled by lobby.js through the bus; unknown types become 'm:<t>'.
 function onMsg(m) {
-  if (m.t === 'defs') onDefs(m);
-  else if (m.t === 'lobby') { retries = 0; renderLobby(m); }
+  if (m.t === 'defs') { onDefs(m); emit('defs', m); }
+  else if (m.t === 'lobby') { retries = 0; emit('lobby', m); }
   else if (m.t === 'full') closeWhy = 'Server je plný (moc otevřených oken).';
   else if (m.t === 'kicked') S.kicked = true;
-  else if (m.t === 'start') startGame(m);
-  else if (m.t === 's') { if (S.inGame && !S.ending) onSnap(m); }
+  else if (m.t === 'start') { startGame(m); emit('start', m); }
+  else if (m.t === 's') { if (S.inGame && !S.ending) { const prev = S.snap; onSnap(m); emit('snap', m, prev); } }
   else if (m.t === 'end') endGame(m);
+  else emit('m:' + m.t, m);
 }
 // sound hook: audio.js is optional, a missing module must never break the game
 function uiSfx(name, x = null, opt) { if (typeof sfx === 'function') sfx(name, x, opt || {}); }
@@ -63,187 +61,15 @@ function flashCls(el, cls, ms = 600) {
 const mmss = t => { t = Math.max(0, Math.ceil(t)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
 const dec = v => String(v).replace('.', ',');
 
-/* ---------------- lobby ---------------- */
+/* ---------------- catalogs ---------------- */
+// Generic part of 'defs'; the lobby (types, maps, deck) is filled in by lobby.js on the bus event.
 function onDefs(m) {
-  Object.assign(S, { defs: m.defs, research: m.research, branches: m.branches, cmds: m.cmds, base: m.base, pool: m.pool,
+  Object.assign(S, { defs: m.defs, research: m.research, branches: m.branches, cmds: m.cmds, cmds0: m.cmds, base: m.base, pool: m.pool,
     recommended: m.recommended, deckSize: m.deckSize, rarity: m.rarity, dobaAt: m.dobaAt,
-    conv: m.conv && m.conv.length >= 2 ? [m.conv[0], m.conv[1], m.conv[2] || 1] : [30, 10, 2], relicFrom: m.relicFrom || 120, relicZone: m.relic || null });
+    conv: m.conv && m.conv.length >= 2 ? [m.conv[0], m.conv[1], m.conv[2] || 1] : [30, 10, 2], relicFrom: m.relicFrom || 120, relicDef: m.relic || null, relicZone: m.relic || null });
   $('#ver').textContent = 'v' + m.ver;
   $('#convBtn').title = `Přetavit ${S.conv[0]} ⚡ na ${S.conv[1]} 🔩 (C)` + (S.conv[2] > 1 ? ` · od Doby ${roman(S.conv[2])}` : '');
-  let d = [];
-  try { d = JSON.parse(load('hmk_deck', '[]')); } catch (e) { d = []; }
-  d = Array.isArray(d) ? [...new Set(d.filter(c => S.pool.includes(c)))].slice(0, S.deckSize) : [];
-  S.deck = d.length ? d : S.recommended.slice();
-  renderDeck();
 }
-
-function renderLobby(m) {
-  S.lobby = m;
-  const queued = m.you === null || m.you === undefined;
-  if (!queued) S.side = m.you;
-  $('#err').innerHTML = '';
-  S.oldServer = !!m.ver && m.ver !== CLIENT_VER;
-  if (S.oldServer) {
-    $('#err').textContent = `Server běží ve starší verzi ${m.ver}, tahle stránka je ${CLIENT_VER}. `
-      + 'Zavři okno serveru, spusť „Spustit server.bat“ znovu a obnov stránku (F5).';
-    if (!S.defs) $('#deck').innerHTML = '<p class="err">Karty nepřišly, protože server je ve starší verzi. Restartuj ho.</p>';
-  }
-  const kickIdle = m.kickIdle || 30;
-  $('#slots').innerHTML = [0, 1].map(i => {
-    const p = m.players[i];
-    if (!p) return `<div class="slot empty">${EMB[i]}<span class="nm">Hráč ${i + 1}: volné místo, čeká se na soupeře…</span></div>`;
-    const me = i === m.you;
-    const ip = p.ip ? `<small>${esc(p.ip)}${me ? ' · tohle okno' : ''}</small>` : '';
-    const canKick = !me && !p.ready && !m.playing && (!queued || p.idle >= kickIdle);
-    return `<div class="slot">${EMB[i]}<span class="nm">${esc(p.name)}${me ? ' (ty)' : ''}${ip}</span>`
-      + `<span class="st ${p.ready ? 'ok' : ''}">${p.ready ? '✔ připraven' : 'nepřipraven'}</span>`
-      + (canKick ? `<button class="kick" data-side="${i}" title="Uvolní místo obsazené třeba zapomenutým oknem">Vyhodit</button>` : '')
-      + '</div>';
-  }).join('');
-  let note = '';
-  if (queued) {
-    note = `Obě místa jsou obsazená${m.playing ? ' a právě probíhá zápas' : ''}. Jsi ${m.pos}. ve frontě, připojíš se automaticky, jakmile se místo uvolní.`;
-    if (!m.playing) note += ` Nepřipraveného hráče, který ${kickIdle} s nic nedělá, můžeš vyhodit.`;
-  } else if (m.queue && m.queue.length) {
-    note = 'Ve frontě čeká: ' + m.queue.map(q => `<b>${esc(q.name)}</b> (${esc(q.ip)})`).join(', ') + '. Nereaguje-li tvůj soupeř, můžeš ho vyhodit.';
-  }
-  $('#note').innerHTML = note;
-  $('#note').classList.toggle('hidden', !note);
-  document.querySelectorAll('.mode').forEach(b => {
-    b.classList.toggle('on', b.dataset.mode === m.mode);
-    b.disabled = queued || m.playing;
-  });
-  const me = queued ? null : m.players[m.you];
-  S.ready = !!(me && me.ready);
-  updateReady();
-  const others = (m.urls || []).map(u => `<code>${esc(u)}</code>`).join(' nebo ');
-  $('#urls').innerHTML = others ? `Soupeř na stejné síti otevře v prohlížeči: ${others}` : '';
-}
-
-function updateReady() {
-  const rb = $('#readyBtn');
-  const queued = !S.lobby || S.lobby.you === null || S.lobby.you === undefined;
-  const full = S.deck.length === S.deckSize;
-  rb.disabled = queued || S.oldServer || (!full && !S.ready);
-  rb.textContent = S.oldServer ? 'Nejdřív restartuj server' : S.ready ? '✔ Připraven (zrušit)' : full ? 'Jsem připraven' : `Doplň balíček (${S.deck.length}/${S.deckSize})`;
-  rb.classList.toggle('on', S.ready);
-}
-
-function cardCostHtml(k) {
-  const d = S.defs[k];
-  const c = d.cost || [0, 0];
-  const p = [];
-  if (c[0]) p.push(`<span class="e">${c[0]} ${SVG.e}</span>`);
-  if (c[1]) p.push(`<span class="s">${c[1]} ${SVG.s}</span>`);
-  if (d.cd) p.push(`<span>obnova ${d.cd} s</span>`);
-  if (d.doba) p.push(`<span class="doba">Doba ${roman(d.doba)}</span>`);
-  return p.join(' · ');
-}
-function renderDeck() {
-  if (!S.defs) return;
-  const groups = [['b', 'Stavby'], ['u', 'Jednotky · šachové pohyby'], ['a', 'Schopnosti']];
-  $('#deck').innerHTML = groups.map(([cat, title]) => `<h4>${title}</h4><div class="cards">`
-    + S.pool.filter(k => S.defs[k].cat === cat).map(k => {
-      const d = S.defs[k], col = CAT_COL[cat];
-      return `<button class="dc ${S.deck.includes(k) ? 'on' : ''}" data-card="${k}">${iconTag(k, col)}<span class="dt"><b>${esc(d.name)}</b>`
-        + `<span class="c">${cardCostHtml(k)}</span><span class="d">${fmt(d.desc)}</span></span></button>`;
-    }).join('') + '</div>').join('');
-  const cnt = $('#deckCount'), n = S.deck.length;
-  cnt.innerHTML = Array.from({ length: S.deckSize }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('') + `<span>${n}/${S.deckSize}</span>`;
-  cnt.classList.toggle('full', n === S.deckSize);
-  updateReady();
-}
-function deckChanged() {
-  save('hmk_deck', JSON.stringify(S.deck));
-  if (S.ready) send({ t: 'ready', v: false });
-  renderDeck();
-}
-$('#deck').addEventListener('click', ev => {
-  const b = ev.target.closest('.dc');
-  if (!b) return;
-  const k = b.dataset.card;
-  if (S.deck.includes(k)) S.deck = S.deck.filter(c => c !== k);
-  else if (S.deck.length < S.deckSize) S.deck.push(k);
-  else { flashCls($('#deckCount'), 'bump', 320); uiSfx('deny'); return; }
-  uiSfx('tick');
-  deckChanged();
-});
-$('#deckRec').onclick = () => { uiSfx('click'); S.deck = S.recommended.slice(); deckChanged(); };
-$('#deckClear').onclick = () => { uiSfx('click'); S.deck = []; deckChanged(); };
-document.querySelectorAll('.mode').forEach(b => b.addEventListener('click', () => { uiSfx('click'); send({ t: 'mode', v: b.dataset.mode }); }));
-let tipIdx = Math.floor(Math.random() * TIPS.length);
-function rotateTip() { $('#tipday').innerHTML = '<span class="rada">Rada</span> · ' + iconize(TIPS[tipIdx % TIPS.length]); tipIdx++; }
-rotateTip(); setInterval(rotateTip, 9000);
-
-function showLobby() {
-  $('#game').classList.add('hidden');
-  $('#resOv').classList.add('hidden'); S.resOpen = false;
-  $('#lobby').classList.remove('hidden');
-  annClear();
-  if (typeof audioStop === 'function') audioStop();
-  drawLobbyBg();
-}
-
-// Lobby backdrop: night sky with a moon, a ruined skyline, and the crypt's ashlar wall in front.
-function drawLobbyBg() {
-  const c = $('#lobbyBg');
-  if (!c || $('#lobby').classList.contains('hidden')) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2), W = innerWidth, H = innerHeight;
-  c.width = Math.round(W * dpr); c.height = Math.round(H * dpr);
-  const g = c.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const sky = g.createLinearGradient(0, 0, 0, H * 0.5);
-  sky.addColorStop(0, '#060509'); sky.addColorStop(1, '#17121a');
-  g.fillStyle = sky; g.fillRect(0, 0, W, H);
-  for (let i = 0; i < 110; i++) { g.fillStyle = `rgba(226,219,204,${0.12 + hash(i, 3, 7) * 0.4})`; g.fillRect(hash(i, 1, 7) * W, hash(i, 2, 7) * H * 0.42, 1.3, 1.3); }
-  const mr = Math.max(24, Math.min(W, H) * 0.05), mx = W * 0.8, my = H * 0.14;
-  let gr = g.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 4.5);
-  gr.addColorStop(0, 'rgba(185,195,214,.18)'); gr.addColorStop(1, 'rgba(185,195,214,0)');
-  g.fillStyle = gr; g.fillRect(mx - mr * 5, my - mr * 5, mr * 10, mr * 10);
-  gr = g.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr);
-  gr.addColorStop(0, '#f1f3f7'); gr.addColorStop(0.7, '#b9c3d6'); gr.addColorStop(1, '#8a94a8');
-  g.beginPath(); g.arc(mx, my, mr, 0, TAU); g.fillStyle = gr; g.fill();
-  g.fillStyle = 'rgba(70,80,100,.18)';
-  for (const [dx, dy, r] of [[-0.3, -0.2, 0.22], [0.25, 0.15, 0.16], [-0.05, 0.4, 0.12], [0.35, -0.35, 0.09]]) { g.beginPath(); g.arc(mx + dx * mr, my + dy * mr, r * mr, 0, TAU); g.fill(); }
-  // ruined skyline: towers with broken tops and a few candle-lit windows
-  const base = H * 0.44;
-  g.fillStyle = '#0c0a0d';
-  g.beginPath(); g.moveTo(0, H);
-  let x = 0, i = 0;
-  const lit = [];
-  while (x < W) {
-    const w = 34 + hash(i, 5, 3) * 70, h = 40 + hash(i, 6, 3) * H * 0.2, top = base - h, k = hash(i, 7, 3);
-    g.lineTo(x, base - h * 0.35);
-    g.lineTo(x, top);
-    if (k < 0.3) { g.lineTo(x + w * 0.5, top - w * 0.9); g.lineTo(x + w, top); }
-    else if (k < 0.6) { g.lineTo(x + w * 0.3, top + 8); g.lineTo(x + w * 0.45, top - 6); g.lineTo(x + w * 0.7, top + 12); g.lineTo(x + w, top + 4); }
-    else { for (let j = 0; j < 4; j++) { const cx = x + (w / 4) * j; g.lineTo(cx, top - 7); g.lineTo(cx + w / 8, top - 7); g.lineTo(cx + w / 8, top); g.lineTo(cx + w / 4, top); } }
-    g.lineTo(x + w, base - h * 0.3);
-    if (hash(i, 8, 3) < 0.55) lit.push([x + w * (0.3 + hash(i, 9, 3) * 0.4), top + 14 + hash(i, 10, 3) * h * 0.4]);
-    x += w + hash(i, 11, 3) * 22; i++;
-  }
-  g.lineTo(W, H); g.closePath(); g.fill();
-  for (const [lx, ly] of lit) { g.fillStyle = 'rgba(255,184,90,.55)'; g.fillRect(lx, ly, 3, 5); }
-  // ashlar wall with a broken upper edge
-  const bw = 112, bh = 56, top = H * 0.5;
-  g.fillStyle = '#0b0907'; g.fillRect(0, top + bh * 0.5, W, H);
-  for (let r = 0; r * bh + top < H; r++) {
-    const off = (r % 2) * bw / 2;
-    for (let cx = -off; cx < W; cx += bw) {
-      const col = Math.round((cx + off) / bw);
-      if (r === 0 && hash(col, r, 21) < 0.45) continue;
-      if (r === 1 && hash(col, r, 21) < 0.12) continue;
-      g.fillStyle = mix('#1d1814', hash(col, r, 22) < 0.5 ? '#2a231d' : '#141110', hash(col, r, 23) * 0.6);
-      g.fillRect(cx + 2, top + r * bh + 2, bw - 4, bh - 4);
-      g.fillStyle = 'rgba(255,230,190,.035)'; g.fillRect(cx + 2, top + r * bh + 2, bw - 4, 3);
-    }
-  }
-  gr = g.createLinearGradient(0, top, 0, H);
-  gr.addColorStop(0, 'rgba(14,11,9,0)'); gr.addColorStop(1, 'rgba(14,11,9,.75)');
-  g.fillStyle = gr; g.fillRect(0, top, W, H - top);
-}
-let lobbyBgRaf = 0;
-window.addEventListener('resize', () => { cancelAnimationFrame(lobbyBgRaf); lobbyBgRaf = requestAnimationFrame(drawLobbyBg); });
 
 // Procedural crown for the logo and the end screen: 'win' gilt, 'lose' cracked and tilted, 'draw' iron.
 function uiCrown(c, state = 'win') {
@@ -332,24 +158,53 @@ for (const b of document.querySelectorAll('.optBtn')) b.addEventListener('click'
 function startGame(m) {
   Object.assign(S, {
     side: m.side, names: m.names, mode: m.mode, myDeck: m.deck, W: m.w, H: m.h, half: m.half, mist: m.mist,
+    type: m.type || 'souboj', solo: !!m.solo, tut: !!m.tut, map: m.map || null, theme: (m.map && m.map.theme) || 'ruiny', paused: false,
+    kit: Array.isArray(m.kit) ? m.kit : S.base,
     horde: m.horde, throneMax: m.throne, snap: null, pick: null, sel: null, inGame: true, ending: false, sideHtml: '', resHtml: '',
     kp: null, seenEnemy: false, keys: {}, inp: { mx: 0, my: 0, b: false, r: false, d: false, u: false }, choose: null,
     zk: [], streakT: 0, readyT: 0, shineT: 0, resTw: null,
+    // factions: both sides' ids (the foe's is revealed here), own prices, research costs, merged commands, King perk, Doba overrides
+    facs: Array.isArray(m.fac) && m.fac.length === 2 ? m.fac : ['bez', 'bez'], costs: m.costs || null, rcost: m.rcost || null,
+    cmds: m.cmds || S.cmds0 || S.cmds, perk: m.perk || null, fdoba: m.doba || null,
   });
   S.ents.clear(); S.ghosts.clear(); S.bmap.clear(); S.fx = []; S.aims.clear(); S.lasers = [];
   S.steps = new Set(); S.shownTips = new Set();
-  S.slots = [...S.base, ...m.deck].slice(0, 10).map((id, i) => ({ id, label: SLOT_LABELS[i], code: SLOT_CODES[i] }));
+  // the Relikvie sits in columns 7-8 on every map, its rows come from the map (defs.maps[].relic = [y0, y1])
+  const mp = (S.maps || []).find(x => m.map && x.id === m.map.id);
+  S.relicZone = mp && mp.relic ? [7, 8, mp.relic[0], mp.relic[1]] : S.relicDef || [7, 8, 3, 5];
+  S.slots = [...S.kit, ...m.deck].slice(0, 10).map((id, i) => ({ id, label: SLOT_LABELS[i], code: SLOT_CODES[i] }));
   $('#lobby').classList.add('hidden'); $('#endOv').classList.add('hidden'); $('#helpOv').classList.add('hidden'); $('#optPop').classList.add('hidden');
   $('#game').classList.remove('hidden');
   $('#toasts').innerHTML = ''; $('#banner').innerHTML = ''; $('#marks').innerHTML = '';
   annClear();
-  $('#thMeN').innerHTML = `${EMB[S.side]}<span>Tvůj trůn · ${esc(S.names[S.side])}</span>`;
-  $('#thFoeN').innerHTML = `${EMB[1 - S.side]}<span>Soupeř · ${esc(S.names[1 - S.side])}</span>`;
+  $('#thMeN').innerHTML = `${facEmb(S.side)}<span>Tvůj trůn · ${esc(S.names[S.side])}</span>`;
+  $('#thFoeN').innerHTML = `${facEmb(1 - S.side)}<span>Soupeř · ${esc(S.names[1 - S.side])}</span>`;
+  $('#thMeN').title = facHudTip(S.side); $('#thFoeN').title = facHudTip(1 - S.side);
   $('#thMeBar').className = 'bar s' + 'ab'[S.side];
   $('#thFoeBar').className = 'bar s' + 'ab'[1 - S.side];
   buildBar();
   resize();
-  toast('Zápas začíná (' + (S.mode === 'kral' ? 'režim Král' : 'režim Stratég') + '). Braň svůj trůn vlevo!');
+  if (S.type !== 'puzzle' && S.type !== 'vyuka') {
+    const nm = { souboj: 'Zápas', preziti: 'Přežití', vycvik: 'Výcvik' }[S.type] || 'Zápas';
+    toast(nm + ' začíná (' + (S.mode === 'kral' ? 'režim Král' : 'režim Stratég') + '). Braň svůj trůn vlevo!');
+    const ff = S.facs[1 - S.side];
+    if (ff && ff !== 'bez' && facInfo(ff)) toast(`Soupeř hraje za frakci ${facInfo(ff).name}. ${facInfo(ff).motto}`);
+  }
+}
+// Faction emblem for the top bar (image with the faction's charge inside the side's shield or roundel) and its passives tooltip
+function facEmb(side) {
+  const f = S.facs[side] || 'bez';
+  return typeof emblemImg === 'function' ? `<img class="emb femb-hud" src="${emblemImg(f, side, 20)}" alt="">` : EMB[side];
+}
+function facHudTip(side) {
+  const f = S.facs[side] || 'bez', i = facInfo(f);
+  if (!i) return f === 'bez' ? 'Bez frakce: původní pravidla.' : facName(f);
+  const t = [`${i.name}: ${i.motto}`].concat((i.passives || []).map(p => '• ' + p));
+  if (side === S.side) {
+    if (S.perk) t.push(`Král, ${S.perk.name}: ${S.perk.desc}`);
+    else if (S.mode === 'strateg') for (const v of Object.values(i.cmdv || {})) t.push(`Stratég, ${v.name}: ${v.desc}`);
+  }
+  return t.join('\n');
 }
 
 function barBtn(attrs, col, icon, seal, name, cost) {
@@ -360,13 +215,14 @@ function barBtn(attrs, col, icon, seal, name, cost) {
 function buildBar() {
   let h = '';
   S.slots.forEach((s, i) => {
-    if (i === S.base.length) h += '<div class="sep"></div>';
+    if (i === S.kit.length) h += '<div class="sep"></div>';
     h += barBtn(`data-slot="${i}"`, cardCol(s.id), s.id, s.label, S.defs[s.id].name, '');
   });
   h += '<div class="sep"></div>' + barBtn('data-horde="1"', PAL.flesh, 'horde', 'T', 'Tlupa', '');
   if (S.mode === 'strateg') {
     h += '<div class="sep"></div>';
     for (const [id, c] of Object.entries(S.cmds)) h += barBtn(`data-cmd="${id}"`, PAL.moon, id, c.key, c.name, `obnova ${c.cd} s`);
+    h += barBtn('data-squad="1"', PAL.moon, 'relic', 'H', 'Četa na Relikvii', 'obnova ' + (S.squad[0] || 20) + ' s');
   }
   h += '<span id="freeBar" style="display:contents"></span>';
   $('#bar').innerHTML = h;
@@ -381,17 +237,18 @@ $('#bar').addEventListener('pointerdown', ev => {
   if (b.dataset.slot !== undefined) pickCard(S.slots[+b.dataset.slot].id);
   else if (b.dataset.horde) useHorde();
   else if (b.dataset.cmd) pickCmd(b.dataset.cmd);
+  else if (b.dataset.squad) useSquad();
   else if (b.dataset.free) pickCard(b.dataset.free);
 });
 $('#bar').addEventListener('mouseover', ev => {
   const b = ev.target.closest('.bb');
-  const k = !b ? null : b.dataset.slot !== undefined ? S.slots[+b.dataset.slot].id : b.dataset.horde ? 'horde' : b.dataset.cmd ? 'cmd:' + b.dataset.cmd : b.dataset.free || null;
+  const k = !b ? null : b.dataset.slot !== undefined ? S.slots[+b.dataset.slot].id : b.dataset.horde ? 'horde' : b.dataset.cmd ? 'cmd:' + b.dataset.cmd : b.dataset.squad ? 'squad' : b.dataset.free || null;
   if (k !== S.barHover) { S.barHover = k; renderSide(); }
 });
 $('#bar').addEventListener('mouseleave', () => { S.barHover = null; renderSide(); });
 
 function costOf(k) {
-  const c = (S.defs[k].cost || [0, 0]).slice();
+  const c = ((S.costs && S.costs[k]) || S.defs[k].cost || [0, 0]).slice();      // S.costs: the own faction's prices from 'start'
   if (S.snap && k === 'gen') c[0] = S.snap.gp;
   if (S.snap && k === 'sniper' && S.snap.sp !== undefined) c[0] = S.snap.sp;
   return c;
@@ -403,7 +260,9 @@ function costHtml(c) {
   return p.join(' ') || 'zdarma';
 }
 function afford(c) { return !!S.snap && S.snap.r[0] >= c[0] && S.snap.r[1] >= c[1]; }
-function locked(k) { const d = S.defs[k]; return !!(S.snap && d.doba && S.snap.doba < d.doba); }
+function locked(k) { const db = dobaOf(k); return !!(S.snap && db && S.snap.doba < db); }
+// a command (Útok! needs Doba II) is locked while the Doba is lower
+function cmdLocked(c) { return !!(S.snap && cmdDoba(c) && S.snap.doba < cmdDoba(c)); }
 function freeOf(k) { return (S.snap && S.snap.free[k]) || 0; }
 const kingDead = () => S.mode === 'kral' && !!(S.snap && S.snap.kr && S.snap.kr.dead > 0);
 
@@ -432,7 +291,7 @@ function useBlock(k) {
   const d = S.defs[k], m = S.snap;
   if (!m) return 'Zápas ještě nezačal.';
   const fr = freeOf(k);
-  if (locked(k) && !fr) return `${d.name} vyžaduje Dobu ${roman(d.doba)}.`;
+  if (locked(k) && !fr) return `${d.name} vyžaduje Dobu ${roman(dobaOf(k))}.`;
   if (d.cat === 'b' && kingDead()) return 'kingdead';
   if (fr) return '';
   if ((m.cd[k] || 0) > 0) return `${d.name} se nabíjí, ještě ${Math.ceil(m.cd[k])} s.`;
@@ -445,6 +304,8 @@ function cellBlock(k, x, y) {
   const unit = S.defs[k].cat === 'u';
   if (!own(x) || inMist(x)) return unit ? 'Jednotky nasazuješ jen na své polovině mimo Mlhu.' : 'Stavět můžeš jen na své polovině mimo Mlhu.';
   if (ter(x, y) === '#') return 'Na troskách stavět nejde. Klikni na ně bez karty a rozeber je.';
+  const tr = terrainRefusal(ter(x, y), unit);
+  if (tr) return tr;
   if (!canPlace(k, x, y)) return unit ? 'Sem jednotku nepostavíš.' : 'Tady stavět nejde.';
   return '';
 }
@@ -454,7 +315,7 @@ function targetBlock(p, x, y) {
   if (t === 'own') return 'Klikni na svou stavbu.';
   if (t === 'crate') return 'Klikni na zásobovací bednu.';
   if (t === 'mist') return 'Karanténu jde použít jen v Mlze.';
-  if (p.id === 'navnada' && visible(x, y)) return 'Návnadu polož na volné pole.';
+  if (p.id === 'navnada' && visible(x, y)) return 'Návnadu polož na volné průchozí pole.';
   return 'Cíl musíš vidět.';
 }
 // red X stamp over a refused cell
@@ -470,6 +331,7 @@ function denyCell(x, y, text) { stampCell(x, y); refuse(text); }
 function useAt(p, x, y) {
   if (p.kind === 'cmd') {
     const c = S.cmds[p.id], cd = S.snap.cd['cmd_' + p.id] || 0;
+    if (cmdLocked(c)) return denyBtn($(`#bar .bb[data-cmd="${p.id}"]`), `${c.name} vyžaduje Dobu ${roman(cmdDoba(c))}.`);
     if (cd > 0) return denyBtn($(`#bar .bb[data-cmd="${p.id}"]`), `${c.name} se nabíjí, ještě ${Math.ceil(cd)} s.`);
     const why = targetBlock(p, x, y);
     if (why) return denyCell(x, y, why);
@@ -493,7 +355,8 @@ function useAt(p, x, y) {
 function pickCard(id) {
   const d = S.defs[id];
   if (!d || S.ending) return;
-  if (locked(id) && !freeOf(id)) return denyCard(id, `${d.name} vyžaduje Dobu ${roman(d.doba)}.`);
+  if (locked(id) && !freeOf(id)) return denyCard(id, `${d.name} vyžaduje Dobu ${roman(dobaOf(id))}.`);
+
   S.choose = null;
   if (d.cat === 'a' && !d.target) {
     const why = useBlock(id);
@@ -513,6 +376,7 @@ function pickCmd(id) {
   if (!c || S.mode !== 'strateg' || S.ending) return;
   S.choose = null;
   const cd = (S.snap && S.snap.cd['cmd_' + id]) || 0;
+  if (cmdLocked(c)) return denyBtn($(`#bar .bb[data-cmd="${id}"]`), `${c.name} vyžaduje Dobu ${roman(cmdDoba(c))}.`);
   if (!c.target) {
     if (cd > 0) return denyBtn($(`#bar .bb[data-cmd="${id}"]`), `${c.name} se nabíjí, ještě ${Math.ceil(cd)} s.`);
     send({ t: 'cmd', id, x: -1, y: -1 });
@@ -531,6 +395,16 @@ function useHorde() {
   if (m.hcd > 0) return denyBtn(b, `Tlupa se nabíjí, ještě ${Math.ceil(m.hcd)} s.`);
   if (m.r[0] < m.hc) return denyBtn(b, `Na Tlupu chybí ${m.hc - m.r[0]} ⚡.`, [m.hc, 0]);
   send({ t: 'horde' });
+  uiSfx('tick');
+}
+// Četa na Relikvii (H, Stratég): the server checks the deck, energy and cooldown too and answers with a message
+function useSquad() {
+  const m = S.snap, b = $('#bar .bb[data-squad]');
+  if (!m || S.mode !== 'strateg' || S.ending) return;
+  if (!m.sq) return denyBtn(b, 'Relikvie ještě není aktivní.');
+  if (m.sq[1] > 0) return denyBtn(b, `Četa se nabíjí, ještě ${Math.ceil(m.sq[1])} s.`);
+  send({ t: 'squad', id: 'relic' });
+  if (b) flashCls(b, 'press', 150);
   uiSfx('tick');
 }
 const convOpen = m => !!m && m.doba >= (S.conv[2] || 1);
@@ -559,7 +433,7 @@ function doUpgrade(e, path, btn) {
   const d = S.defs[e.kind];
   if (e.lvl >= 3) refuse('Stavba už má maximální úroveň.');
   else if (kingDead()) denyKing();
-  else if (e.lvl === 2 && e.kind !== 'zed' && !path) refuse('Na úroveň 3 vyber cestu A nebo B.');
+  else if (e.lvl === 2 && !isWallKind(e.kind) && !path) refuse('Na úroveň 3 vyber cestu A nebo B.');
   else if (!afford(d.up[e.lvl - 1])) denyBtn(btn, upMsg(d.up[e.lvl - 1]), d.up[e.lvl - 1]);
   else { send({ t: 'upg', id: e.id, path }); if (btn) flashCls(btn, 'press', 150); uiSfx('tick'); }
   renderSide();
@@ -575,7 +449,7 @@ function doSell(e) {
 function keyUpgrade() {
   const e = S.sel && S.ents.get(S.sel);
   if (!e) return refuse('Nejdřív klikni na svou stavbu.');
-  if (e.lvl === 2 && e.kind !== 'zed') {
+  if (e.lvl === 2 && !isWallKind(e.kind)) {
     if (S.choose) { S.choose = null; return renderSide(); }
     if (kingDead()) return denyKing();
     S.choose = { id: e.id, until: performance.now() + 4000 };
@@ -606,7 +480,7 @@ function updateBar() {
       unaff = !fr && !afford(c);
       b.classList.toggle('on', !!(S.pick && S.pick.id === id && S.pick.kind !== 'cmd'));
       b.classList.toggle('free', fr > 0);
-      cost = lk ? `<span class="doba">zámek · Doba ${roman(d.doba)}</span>` : fr ? `${SVG.g} zdarma` : costHtml(c);
+      cost = lk ? `<span class="doba">zámek · Doba ${roman(dobaOf(id))}</span>` : fr ? `${SVG.g} zdarma` : costHtml(c);
       setHtml(b.querySelector('.badge'), fr ? 'dar ×' + fr : '');
       if (fr > (b._fr || 0)) flashCls(b.querySelector('.badge'), 'pop', 1000);
       b._fr = fr;
@@ -616,8 +490,13 @@ function updateBar() {
     } else if (b.dataset.cmd) {
       const id = b.dataset.cmd;
       cd = m.cd['cmd_' + id] || 0; cdMax = S.cmds[id].cd;
-      b.classList.toggle('on', !!(S.pick && S.pick.kind === 'cmd' && S.pick.id === id));
-      cost = cd > 0 ? `připraveno za ${Math.ceil(cd)} s` : `obnova ${cdMax} s`;
+      lk = cmdLocked(S.cmds[id]);                       // Útok! (G) waits for Doba II
+      b.classList.toggle('on', !lk && !!(S.pick && S.pick.kind === 'cmd' && S.pick.id === id));
+      cost = lk ? `<span class="doba">zámek · Doba ${roman(cmdDoba(S.cmds[id]))}</span>` : cd > 0 ? `připraveno za ${Math.ceil(cd)} s` : `obnova ${cdMax} s`;
+    } else if (b.dataset.squad) {
+      const sq = m.sq;
+      cd = sq ? sq[1] : 0; cdMax = S.squad[0] || 20; lk = !sq; unaff = !!sq && m.r[0] < sq[0];
+      cost = lk ? 'Relikvie ještě spí' : cd > 0 ? `připraveno za ${Math.ceil(cd)} s` : `<span class="e">${sq[0]} ${SVG.e}</span> · obnova ${cdMax} s`;
     } else return;
     b.classList.toggle('lock', lk);
     b.classList.toggle('poor', !lk && (unaff || cd > 0));
@@ -715,7 +594,7 @@ function hud(m, prev) {
   const cb = $('#convBtn'), co = convOpen(m);
   cb.classList.toggle('lock', !co);
   cb.classList.toggle('poor', co && m.r[0] < S.conv[0]);
-  const canRes = Object.entries(S.research).some(([id, r]) => !m.tech.includes(id) && m.r[2] >= r.cost && (r.tier === 1 || m.tech.includes(r.branch + (r.tier - 1))));
+  const canRes = Object.entries(S.research).some(([id, r]) => !m.tech.includes(id) && m.r[2] >= rcostOf(id) && (r.tier === 1 || m.tech.includes(r.branch + (r.tier - 1))));
   $('#resBtn').classList.toggle('ping', canRes);
   throneBar('Me', S.side, m, prev);
   throneBar('Foe', 1 - S.side, m, prev);
@@ -898,6 +777,7 @@ function annEvents(m, p) {
     else if (code === 'kr' && a !== me) announce('Soupeřův král povstal', '', 3, 'info');
     else if (code === 'ult') announce(mine ? 'Válečný pokřik!' : 'Soupeřův pokřik', mine ? 'jednotky kolem Krále jsou 8 s odolnější' : 'jeho jednotky u Krále jsou 8 s odolnější', 2, mine ? 'good' : 'bad');
     else if (code === 'utok') announce(mine ? 'Útok!' : 'Soupeř velí k útoku', mine ? 'tvé jednotky jsou 6 s odolnější a rychlejší' : 'jeho jednotky jsou 6 s odolnější a rychlejší', 2, mine ? 'good' : 'bad');
+    else if (code === 'turn') announce('Mrtví poslechli!', mine ? `${b} zombie se obrátilo proti soupeři` : `${b} zombie se obrátilo proti tobě`, 2, mine ? 'good' : 'bad');
     else if (code === 'promo') announce('Proměna!', mine ? 'tvůj Pěšák povýšil u soupeřova trůnu' : 'soupeřův Pěšák povýšil u tvého trůnu', 2, mine ? 'good' : 'bad');
     else if (code === 'contest') {
       announce('Sporná bedna', S.mode === 'strateg' ? 'Odstřel (W) sestřelí soupeřův dron' : 'u bedny stojí oba, vyžeň soupeře', 3, 'info');
@@ -914,7 +794,8 @@ function annEvents(m, p) {
 }
 function unlockAnim(doba) {
   let n = 0;
-  S.slots.forEach((s, i) => { if (S.defs[s.id].doba === doba) { const b = $(`#bar .bb[data-slot="${i}"]`); setTimeout(() => flashCls(b, 'unlock', 600), 80 * n++); } });
+  S.slots.forEach((s, i) => { if (dobaOf(s.id) === doba) { const b = $(`#bar .bb[data-slot="${i}"]`); setTimeout(() => flashCls(b, 'unlock', 600), 80 * n++); } });
+  for (const id of Object.keys(S.cmds || {})) if (cmdDoba(S.cmds[id]) === doba) { const b = $(`#bar .bb[data-cmd="${id}"]`); setTimeout(() => flashCls(b, 'unlock', 600), 80 * n++); }
 }
 
 /* ---------------- toasts (chronicle under the side panel) ---------------- */
@@ -939,7 +820,7 @@ function advisor(m) {
   const cat = e => S.defs[e.kind].cat;
   // checklist progress
   if (mine.some(e => e.kind === 'gen')) S.steps.add('gen');
-  if (mine.some(e => ATTACK.includes(e.kind))) S.steps.add('tower');
+  if (mine.some(e => ATTACK.includes(e.kind) || e.kind === 'hangar')) S.steps.add('tower');
   if (S.seenEnemy || mine.some(e => e.kind === 'hlaska') || m.rv.length) S.steps.add('scout');
   if (mine.some(e => cat(e) === 'u')) S.steps.add('unit');
   if (mine.some(e => cat(e) === 'b' && e.lvl >= 2)) S.steps.add('upg');
@@ -967,14 +848,26 @@ function advisor(m) {
   if (m.r[0] >= 350) tip('rich', 'Hromadí se ti energie. Utrať ji za stavby, jednotky nebo Tlupu (T).');
   if (convOpen(m) && m.r[0] >= 150 && m.r[1] < 15) tip('conv', 'Máš energii, ale málo šrotu. Přetav 30 ⚡ na 10 🔩 klávesou C nebo tlačítkem u šrotu.');
   if (mine.filter(e => cat(e) === 'b').length >= 3 && !mine.some(e => cat(e) === 'b' && e.lvl >= 2) && m.r[1] >= 15) tip('upg', 'Klikni na svou věž a vylepši ji (U). Na úrovni 2 zmáčkni U a pak A nebo B (nebo klikni na cestu).');
-  if (m.doba >= 2) tip('doba2', 'Doba II! Odemkly se silnější karty (Tesla cívka, Hlídka, Nálet, Výpadek proudu).');
+  if (m.doba >= 2) {
+    const n2 = S.slots.filter(s => dobaOf(s.id) === 2).map(s => S.defs[s.id].name).slice(0, 4);
+    tip('doba2', 'Doba II! Odemkly se silnější karty' + (n2.length ? ' (' + n2.join(', ') + ')' : '') + (!kral && S.cmds.utok ? ' a velení ' + S.cmds.utok.name + ' (G)' : '') + '.');
+  }
   if ((m.ev || []).some(v => v[0] === 'alfa') || (m.msg || []).some(x => x.includes('Alfa'))) tip('alfa', 'V Mlze je Alfa. Je silná, ale kdo ji zabije, získá 🧪 a legendární bednu.');
   if (Object.keys(m.free).length) tip('free', 'Z bedny máš kartu zdarma (🎁 na liště). Použij ji, až se bude hodit.');
   if (m.ec && m.ec[0] === 1 && m.ec[1] <= 15) tip('ecl', 'Blíží se Zatmění: věže uvidí jen 1,5 pole. Šetři jednotky na útok ve tmě a hlídej svou polovinu.');
-  if (m.rl && t >= S.relicFrom) tip('relic', 'Uprostřed Mlhy se probudila Relikvie. Postav tam ' + (kral ? 'jednotku nebo Krále' : '2–3 jednotky') + ' na 5 s a dostaneš +2 ⚡/s a 🧪.');
-  if (!kral && m.rl && m.rl[0] === 1 - S.side && m.rl[3] <= 5) tip('relic2', 'Soupeř drží Relikvii a bohatne. Pošli do Mlhy pár jednotek a Odstřelem (W) sestřel toho, kdo ji obsazuje.');
+  if (kral && m.rl && t >= S.relicFrom) tip('relic', 'Uprostřed Mlhy se probudila Relikvie. Postav tam jednotku nebo Krále na 5 s a dostaneš +2 ⚡/s a 🧪.');
+  // Stratég: the relic is not ours, so point at the squad button (H)
+  if (!kral && m.rl && t >= S.relicFrom && m.rl[0] !== S.side && m.sq && m.sq[1] <= 0) tip('relicsq', 'Relikvie ještě není tvoje. Zmáčkni H a vyšli na ni četu (Obrněnec a 2 Pěšáci' + (m.sq[0] ? `, asi ${m.sq[0]} ⚡` : '') + '). Obsadí ji za 5 s.');
+  if (!kral && m.rl && m.rl[0] === 1 - S.side && m.rl[3] <= 5) tip('relic2', 'Soupeř drží Relikvii a bohatne. Vyšli na ni četu (H) a Odstřelem (W) sestřel toho, kdo ji obsazuje.');
   if (kral && m.kr && m.kr.ult >= 100) tip('ult', 'Válečný pokřik je nabitý! Zmáčkni Q u svých jednotek: 8 s budou odolnější a rychlejší.');
-  if (!kral && t > 200 && S.cmds.utok) tip('utok', 'G = Útok!: tvé jednotky 6 s dostávají od věží o polovinu méně. Pošli vlnu a pak ho zmáčkni.');
+  if (!kral && t > 200 && S.cmds.utok && !cmdLocked(S.cmds.utok)) {
+    tip('utok', S.cmds.utok.turn ? 'G = Volání mrtvých: jako Útok! a navíc se zombie v Mlze, které jdou na tebe, obrátí na soupeře. Pošli vlnu a pak ho zmáčkni.'
+      : 'G = Útok!: tvé jednotky 6 s dostávají od věží o polovinu méně. Pošli vlnu a pak ho zmáčkni.');
+  }
+  // own faction: its 2 tips (the same texts as in the lobby, without the markup)
+  const ft = FAC_TIPS[S.facs[S.side]] || [];
+  if (ft[0] && t > 25) tip('fac1', ft[0].replace(/<\/?b>/g, ''));
+  if (ft[1] && t > 100) tip('fac2', ft[1].replace(/<\/?b>/g, ''));
   if (m.ni) tip('night', 'Poslední noc: tma, Mlha každých 20 s pohltí další sloupec a trůny ztrácejí životy. Padnou-li oba naráz, vyhraje ten, kdo nadělal víc škody.');
   if (kral && m.kr && m.fx.some(f => f[0] === 'a' && f[6] === m.kr.id)) tip('parry', 'Na tvého Krále míří rudá nit! Zmáčkni mezerník těsně před výstřelem a střelu odrazíš. Nebo uskoč výpadem (Shift).');
 }
@@ -985,15 +878,25 @@ function statRows(k, lvl, path) {
   const r = [];
   if (d.cat === 'u') {
     r.push(['Životy', d.hp], ['Poškození', d.dmg + ' / ' + dec(d.rate) + ' s'], ['Krok', 'každých ' + dec(d.step) + ' s']);
+    if (d.sh) r.push(['Štít', d.sh]);
+    if (d.max) r.push(['Nejvýš', d.max + ' ks']);
+
   } else if (d.cat === 'a') {
-    r.push(['Cena', costHtml(d.cost)], ['Cooldown', d.cd + ' s']);
+    r.push(['Cena', costHtml(costOf(k))], ['Cooldown', d.cd + ' s']);
+
   } else if (k === 'gen') {
     r.push(['Výnos', '+' + ([2, 3, 3][lvl - 1] + (path === 'A' ? 3 : 0)) + ' ' + SVG.e + '/s']);
   } else if (k === 'hlaska') {
     r.push(['Dohled', dec(path === 'A' ? 7 : lvl < 3 ? 4.5 + (lvl - 1) * 0.75 : 6) + ' polí']);
-  } else if (k === 'zed') {
+  } else if (isWallKind(k)) {
     r.push(['Materiál', d.levels[lvl - 1]], ['Odolnost', d.hps[lvl - 1]]);
+  } else if (k === 'dilna') {
+    r.push(['Výnos', dec(((d.scrap || [0.6])[lvl - 1] + (path === 'A' ? 0.6 : 0)).toFixed(1)) + ' ' + SVG.s + '/s'], ['Nejvýš', d.max + ' ks']);
+    if (path === 'B') r.push(['Oprava', '5 životů/s okolo']);
+  } else if (k === 'hnizdo') {
+    r.push(['Vypouští', 'každých ' + (d.every || [15])[lvl - 1] + ' s'], ['Nejvýš', d.max + ' ks']);
   } else if (k === 'mina') {
+
     r.push(['Výbuch', Math.round(d.dmg * LVL[lvl - 1]) + ' v okruhu 1,2']);
   } else if (k === 'rusicka') {
     const [rr, f] = path === 'B' ? [2.4, 45] : lvl >= 2 ? [2.0, 30] : [1.6, 25];
@@ -1039,13 +942,13 @@ function renderSide() {
   const hov = S.barHover;
   if (e) {
     const d = S.defs[e.kind];
-    const lvlName = e.kind === 'zed' ? d.levels[e.lvl - 1] : 'Úroveň ' + e.lvl + (e.path ? ' · cesta ' + e.path + ': ' + d.paths[e.path][0] : '');
+    const lvlName = isWallKind(e.kind) ? d.levels[e.lvl - 1] : 'Úroveň ' + e.lvl + (e.path ? ' · cesta ' + e.path + ': ' + d.paths[e.path][0] : '');
     live.hp = `${e.hp} / ${e.maxhp}`;
     h += `<h3>${iconTag(e.kind, COL[S.side])}${esc(d.name)}</h3><div class="lvl">${esc(lvlName)}${e.flags & 128 ? ' · skrytá před soupeřem' : ''}</div><p>${fmt(d.desc)}</p>`;
     h += `<div class="stats"><span>Stav</span><span data-live="hp"></span>${statRows(e.kind, e.lvl, e.path)}</div>`;
     if (e.lvl < 3) {
       const c = d.up[e.lvl - 1], need = JSON.stringify(c);
-      if (e.lvl === 2 && e.kind !== 'zed') {
+      if (e.lvl === 2 && !isWallKind(e.kind)) {
         const open = !!(S.choose && S.choose.id === e.id);
         h += `<p class="${open ? 'hint' : ''}">Úroveň 3: vyber cestu. Klikni na ni, nebo <kbd>U</kbd> a pak <kbd>A</kbd> / <kbd>B</kbd>.</p>`;
         for (const p of ['A', 'B']) {
@@ -1053,20 +956,22 @@ function renderSide() {
             + `<span>${fmt(d.paths[p][1])}</span><br>${costHtml(c)}</button>`;
         }
       } else {
-        const nm = e.kind === 'zed' ? 'Zesílit na ' + d.levels[e.lvl].toLowerCase() : 'Vylepšit na úroveň 2';
+        const nm = isWallKind(e.kind) ? 'Zesílit na ' + d.levels[e.lvl].toLowerCase() : 'Vylepšit na úroveň 2';
         h += `<button class="act up" tabindex="-1" data-a="upg" data-need="${need}"><b>${nm}<kbd>U</kbd></b>${costHtml(c)}</button>`;
       }
     } else h += '<p>Maximální úroveň.</p>';
     h += '<button class="act sell" tabindex="-1" data-a="sell"><b>Prodat<kbd>X</kbd></b><span>Vrátí 50 % ceny podle stavu.</span></button>';
   } else if (hov === 'horde') {
     h += `<h3>${iconTag('horde', PAL.flesh)}Tlupa</h3><div class="lvl">${costHtml([m ? m.hc : S.horde[0], 0])} · obnova ${S.horde[1]} s</div><p>Vypustí 5 zombie (po 6. minutě i Obra) z Mlhy přímo na soupeře.</p>`;
+  } else if (hov === 'squad') {
+    h += `<h3>${iconTag('relic', PAL.moon)}Četa na Relikvii</h3><div class="lvl">Klávesa H · obnova ${S.squad[0] || 20} s${m && m.sq ? ` · ${costHtml([m.sq[0], 0])}` : ''}</div><p>Vyšle na Relikvii Obrněnce a 2 Pěšáky, jinak 3 nejlevnější jednotky z balíčku. Vyrazí postupně a každý zaplatí svou cenu. Jen pro Stratéga.</p>`;
   } else if (hov && hov.startsWith('cmd:')) {
     const id = hov.slice(4), c = S.cmds[id];
-    h += `<h3>${iconTag(id, PAL.moon)}${esc(c.name)}</h3><div class="lvl">Klávesa ${c.key} · obnova ${c.cd} s</div><p>${fmt(c.desc)}</p>`;
+    h += `<h3>${iconTag(id, PAL.moon)}${esc(c.name)}</h3><div class="lvl">Klávesa ${c.key} · obnova ${c.cd} s${cmdDoba(c) ? ` · <span class="doba">Doba ${roman(cmdDoba(c))}</span>` : ''}</div><p>${fmt(c.desc)}</p>`;
   } else if (hov || (S.pick && S.pick.kind !== 'cmd')) {
     const k = hov || S.pick.id;
     const d = S.defs[k];
-    h += `<h3>${iconTag(k, cardCol(k))}${esc(d.name)}</h3><div class="lvl">${d.cat === 'a' ? cardCostHtml(k) : costHtml(costOf(k)) + (d.doba ? ` · <span class="doba">Doba ${roman(d.doba)}</span>` : '')}</div><p>${fmt(d.desc)}</p>`;
+    h += `<h3>${iconTag(k, cardCol(k))}${esc(d.name)}</h3><div class="lvl">${d.cat === 'a' ? cardCostHtml(k) : costHtml(costOf(k)) + (dobaOf(k) ? ` · <span class="doba">Doba ${roman(dobaOf(k))}</span>` : '')}${d.max ? ` · nejvýš ${d.max}` : ''}</div><p>${fmt(d.desc)}</p>`;
     if (d.cat !== 'a') h += `<div class="stats">${statRows(k, 1, '')}</div>`;
     if (d.paths) h += `<p>Úroveň 3: <b>A</b> ${esc(d.paths.A[0])} · <b>B</b> ${esc(d.paths.B[0])}</p>`;
     if (freeOf(k)) h += `<p class="hint">${SVG.g} Máš ${freeOf(k)}× zdarma z bedny.</p>`;
@@ -1080,12 +985,17 @@ function renderSide() {
       h += '<p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> pohyb · <kbd>Mezerník</kbd> blok · <kbd>F</kbd> oprava · <kbd>Shift</kbd> výpad · <kbd>Q</kbd> pokřik</p>';
     } else if (m && S.mode === 'strateg') {
       for (const [id, c] of Object.entries(S.cmds)) {
-        const cd = m.cd['cmd_' + id] || 0;
-        live['cp' + id] = cd > 0;
-        live['ct' + id] = cd > 0 ? 'připraveno za ' + Math.ceil(cd) + ' s' : fmt(c.desc);
+        const cd = m.cd['cmd_' + id] || 0, lk = cmdLocked(c);
+        live['cp' + id] = cd > 0 || lk;
+        live['ct' + id] = lk ? `zámek · odemkne se v Době ${roman(cmdDoba(c))}` : cd > 0 ? 'připraveno za ' + Math.ceil(cd) + ' s' : fmt(c.desc);
         live['cw' + id] = (cd > 0 ? cd / c.cd * 100 : 0) + '%';
         h += `<button class="act cmd" tabindex="-1" data-a="cmd" data-id="${id}" data-tg="cp${id} poor"><b>${iconTag(id, PAL.moon, 'sm')} ${esc(c.name)}<kbd>${c.key}</kbd></b><span data-live="ct${id}"></span><i class="cdl" data-w="cw${id}"></i></button>`;
       }
+      const sq = m.sq;
+      live.cpsq = !sq || sq[1] > 0;
+      live.ctsq = !sq ? 'Odemkne se, až se probudí Relikvie.' : sq[1] > 0 ? 'připraveno za ' + Math.ceil(sq[1]) + ' s' : `Obrněnec a 2 Pěšáci na Relikvii (${sq[0]} ${SVG.e})`;
+      live.cwsq = (sq && sq[1] > 0 ? sq[1] / (S.squad[0] || 20) * 100 : 0) + '%';
+      h += `<button class="act cmd" tabindex="-1" data-a="squad" data-tg="cpsq poor"><b>${iconTag('relic', PAL.moon, 'sm')} Četa na Relikvii<kbd>H</kbd></b><span data-live="ctsq"></span><i class="cdl" data-w="cwsq"></i></button>`;
     }
     if (m) {
       live.vz = String(m.r[2]);
@@ -1096,7 +1006,8 @@ function renderSide() {
     } else h += '<p>Vyber kartu dole nebo klikni na svou stavbu. Klikni na trosky na své polovině pro šrot.</p>';
     if (m && m.job) { live.job = Math.round(m.job[2] * 100) + ' %'; h += '<p class="hint">Čety rozebírají trosky: <b data-live="job"></b></p>'; }
   }
-  h += `<div class="keys"><kbd>H</kbd> nápověda · <kbd>M</kbd> zvuk · <kbd>Esc</kbd> zrušit · <button class="linkb" tabindex="-1" data-a="tips">rady ${S.tips ? 'vypnout' : 'zapnout'}</button></div>`;
+  const helpKey = S.mode === 'strateg' ? '<kbd>H</kbd> četa na Relikvii · <button class="linkb" tabindex="-1" data-a="help">nápověda <kbd>F1</kbd></button>' : '<kbd>H</kbd> nápověda';
+  h += `<div class="keys">${helpKey} · <kbd>M</kbd> zvuk · <kbd>Esc</kbd> ${S.solo ? 'zrušit, pauza' : 'zrušit'} · <button class="linkb" tabindex="-1" data-a="tips">rady ${S.tips ? 'vypnout' : 'zapnout'}</button></div>`;
   const box = $('#sideMain');
   if (h !== S.sideHtml) { S.sideHtml = h; box.innerHTML = h; }
   for (const el of box.querySelectorAll('[data-live]')) setHtml(el, live[el.dataset.live] === undefined ? '' : String(live[el.dataset.live]));
@@ -1114,6 +1025,8 @@ $('#side').addEventListener('pointerdown', ev => {
   if (a === 'res') return toggleResearch();
   if (a === 'tips') { S.tips = !S.tips; save('hmk_tips', S.tips ? '1' : '0'); $('#tipsChk').checked = S.tips; S.sideHtml = ''; return renderSide(); }
   if (a === 'cmd') { flashCls(b, 'press', 150); return pickCmd(b.dataset.id); }
+  if (a === 'squad') { flashCls(b, 'press', 150); return useSquad(); }
+  if (a === 'help') return toggleHelp(true);
   const e = S.sel && S.ents.get(S.sel);
   if (!e) return;
   if (a === 'upg') doUpgrade(e, b.dataset.p || '', b);
@@ -1130,7 +1043,8 @@ function toggleResearch(force) {
 }
 function resState(id, m) {
   const r = S.research[id], done = m.tech.includes(id), open = r.tier === 1 || m.tech.includes(r.branch + (r.tier - 1));
-  return { r, done, open, can: !done && open && m.r[2] >= r.cost };
+  const cost = rcostOf(id);          // faction price (Korporace: tier 1 costs 1 🧪)
+  return { r, done, open, cost, can: !done && open && m.r[2] >= cost };
 }
 function renderResearch() {
   if (!S.resOpen || !S.snap) return;
@@ -1142,7 +1056,7 @@ function renderResearch() {
     h += `<div><h3>${esc(name)}</h3>`;
     for (let tier = 1; tier <= 3; tier++) {
       const id = br + tier, { r, done, open } = resState(id, m);
-      const state = done ? 'vyzkoumáno' : !open ? 'zámek · nejdřív předchozí stupeň' : `${r.cost} ${SVG.v}`;
+      const state = done ? 'vyzkoumáno' : !open ? 'zámek · nejdřív předchozí stupeň' : `${rcostOf(id)} ${SVG.v}`;
       h += `<button class="rb ${done ? 'done' : ''} ${!open ? 'locked' : ''}" tabindex="-1" data-res="${id}"><b>${roman(tier)}. ${esc(r.name)}</b><span>${fmt(r.desc)}</span><span class="st">${state}</span></button>`;
     }
     h += '</div>';
@@ -1163,7 +1077,7 @@ $('#resTree').addEventListener('pointerdown', ev => {
   const st = resState(b.dataset.res, S.snap);
   if (st.done) return;
   if (!st.open) return denyBtn(b, 'Nejdřív vyzkoumej předchozí stupeň.');
-  if (!st.can) return denyBtn(b, `Na výzkum chybí ${st.r.cost - S.snap.r[2]} 🧪.`);
+  if (!st.can) return denyBtn(b, `Na výzkum chybí ${st.cost - S.snap.r[2]} 🧪.`);
   send({ t: 'res', id: b.dataset.res });
   flashCls(b, 'press', 150);
   uiSfx('tick');
@@ -1207,6 +1121,7 @@ function showEndOverlay(m) {
   const w = i => (m.winner === i ? ' w' : '');
   $('#endS').innerHTML = `<thead><tr><th></th><th class="ca${w(0)}">${EMB[0]}${esc(m.names[0])}</th><th class="cb${w(1)}">${EMB[1]}${esc(m.names[1])}</th></tr></thead><tbody>`
     + rows.map(([lbl, f]) => `<tr><th>${lbl}</th><td class="${w(0)}" data-n="${+f(0) || 0}">0</td><td class="${w(1)}" data-n="${+f(1) || 0}">0</td></tr>`).join('') + '</tbody>';
+  $('#endMeta').innerHTML = '';
   $('#endOv').classList.remove('hidden');
   uiCrown($('#endCrown'), res);
   uiSfx(res);
@@ -1222,5 +1137,6 @@ function showEndOverlay(m) {
     };
     requestAnimationFrame(step);
   }, 250 + ri * 110));
+  emit('end', m, $('#endMeta'));
 }
 $('#endBtn').onclick = () => { uiSfx('click'); $('#endOv').classList.add('hidden'); showLobby(); };

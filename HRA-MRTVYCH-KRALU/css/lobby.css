@@ -1,0 +1,120 @@
+/* Lobby 1.0 (M2-D): game type segment, settings grid, map select + preview, difficulty, right folio tabs.
+   Loaded after style.css, so it refines the base lobby rules there. Every new text is at least 14 px. */
+.lcols { grid-template-columns: minmax(320px, 500px) minmax(0, 1fr); }
+.lcol { min-width: 0; }
+@media (max-width: 900px) { .lcols { grid-template-columns: 1fr; } }
+
+/* name + level badge */
+.namebox { margin-bottom: 12px; }
+.namerow { display: flex; align-items: flex-end; gap: 10px; }
+.namerow input { flex: 1; min-width: 0; }
+.lvbadge { flex: none; padding: 3px 10px 2px; margin-bottom: 3px; font: 700 14px var(--display); letter-spacing: .08em; color: var(--ink); white-space: nowrap;
+  background: var(--plaque); border: 1px solid #5c4519; border-radius: 3px; box-shadow: inset 0 1px 0 rgba(255,255,255,.5); }
+.fld { margin: 0 0 12px; min-width: 0; }
+.eyebrow, .rada, .slot .nm small { font-size: 14px; }
+.lbl, label.lbl { display: block; font: 700 14px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--ink2); margin-bottom: 5px; }
+.fdesc { margin: 6px 0 0; font-size: 14px; line-height: 1.35; color: var(--ink2); }
+
+/* game type: 4 segments with icon + text (the text carries the meaning, colour only marks the selection) */
+.seg4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid rgba(90,74,53,.55); border-radius: 3px; overflow: hidden; background: var(--vellumL); }
+.tseg { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 6px 2px 5px; color: var(--ink);
+  font: 700 14px var(--display); letter-spacing: .04em; background: transparent; border: 0; border-left: 1px solid rgba(90,74,53,.35); transition: background .12s; }
+.tseg:first-child { border-left: 0; }
+.tseg .ico { width: 22px; height: 22px; }
+.tseg:hover { background: rgba(201,162,74,.18); }
+.tseg.on { color: #fff6df; background: linear-gradient(180deg, #8e2219, #6d1912); box-shadow: inset 0 -3px 0 var(--gilt); }
+.tseg:focus-visible, .dseg:focus-visible, .mode:focus-visible, .ftab:focus-visible, #mapSel:focus-visible { outline: 2px solid var(--rubric); outline-offset: 2px; }
+
+/* control mode + map side by side when the folio is wide enough */
+.setgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 14px; }
+@media (min-width: 1100px) { .setgrid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+.lcol .modes { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+@media (max-width: 1099px) { .lcol .modes { grid-template-columns: 1fr 1fr; } }
+.lcol .mode { padding: 7px 10px; }
+.lcol .mode.on { padding: 6px 9px; }
+.lcol .mode .ico { width: 26px; height: 26px; }
+.lcol .mode b { font-size: 16px; }
+.lcol .mode span span { font-size: 14px; line-height: 1.3; }
+
+/* map select with a procedural thumbnail */
+#mapSel { width: 100%; min-height: 40px; padding: 6px 28px 6px 10px; font: 700 16px var(--font); color: var(--ink); background-color: var(--vellumL);
+  border: 1px solid rgba(90,74,53,.55); border-radius: 3px; cursor: pointer; }
+#mapSel:disabled { opacity: .6; cursor: default; }
+.mapbox { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; }
+.mapprev { flex: none; width: 128px; height: 72px; display: block; border: 2px solid var(--gilt-lo); border-radius: 2px; background: #1b1411; image-rendering: auto; }
+.mapbox .fdesc { margin: 0; }
+
+/* difficulty / Prezivani opponent */
+.segn { display: flex; flex-wrap: wrap; gap: 6px; }
+.dseg { flex: 1 1 90px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 6px 8px; color: var(--ink); background: var(--vellumL);
+  border: 1px solid rgba(90,74,53,.5); border-radius: 3px; transition: transform .12s, border-color .12s; }
+.dseg b { font: 700 15px var(--display); letter-spacing: .06em; }
+.dseg small { font-size: 14px; color: var(--ink2); line-height: 1.2; text-align: center; }
+.dseg:hover { border-color: var(--gilt); }
+.dseg.on { border: 2px solid var(--gilt); padding: 5px 7px; background: #f9f0db; box-shadow: 0 4px 10px rgba(60,35,10,.3); transform: translateY(-1px); }
+.dseg.on b::before { content: "✔ "; color: var(--rubric-ink); }
+
+/* slots: level chip */
+.slot .lv { flex: none; font: 700 14px var(--display); letter-spacing: .04em; color: var(--ink2); white-space: nowrap; }
+.slot .st { font-size: 14px; }
+.slots { margin: 10px 0; }
+#typePane:empty, #facPane:empty { display: none; }
+#typePane, #facPane { margin: 0 0 12px; }
+.lcol .row.links { margin-top: 14px; }
+.lcol .btn.small { font-size: 14px; min-height: 34px; }
+.lcol .chk { margin: 12px 0; }
+
+/* right folio tabs */
+.ftabs { display: flex; flex-wrap: wrap; gap: 4px; margin: -6px 0 14px; border-bottom: 2px solid rgba(90,74,53,.45); }
+.ftabs:empty { display: none; }
+.ftab { padding: 8px 16px 6px; margin-bottom: -2px; font: 700 14px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--ink2);
+  background: rgba(255,250,235,.35); border: 1px solid rgba(90,74,53,.4); border-bottom: 0; border-radius: 3px 3px 0 0; transition: background .12s; }
+.ftab:hover { background: rgba(255,250,235,.7); }
+.ftab.on { color: var(--ink); background: var(--vellumL); border-color: var(--gilt-lo); border-bottom: 2px solid var(--vellumL); box-shadow: inset 0 3px 0 var(--rubric); }
+.tabpane { min-width: 0; }
+.tabpane .muted { margin: 8px 0 0; }
+
+/* deck cards in the narrower right folio */
+.cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.dc .d, .dc .c { font-size: 14px; }
+
+@media (max-height: 860px) and (min-width: 1000px) {
+  .lwrap { gap: 8px; }
+  .lcol { padding: 12px 18px 14px; }
+  .namebox, .fld { margin-bottom: 8px; }
+  .lhead { gap: 0; }
+  .lhead .tagline, .lhead .rubr { display: none; }
+  #logoCrown { width: 56px; height: 39px; }
+  .logo .lb { font-size: clamp(48px, 9vh, 80px); }
+  .logo .la { font-size: clamp(20px, 4vh, 38px); }
+  .slots { margin: 8px 0; gap: 6px; }
+  .slot { padding: 4px 10px; }
+  .lcol .btn.big { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) { .tseg, .dseg, .ftab { transition: none; } }
+
+/* factions (M3-E1): 4 tiles in the style of .mode, a detail box for the chosen one, faction cards first in the deck */
+.ftiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ftile { position: relative; display: flex; gap: 10px; align-items: center; text-align: left; min-width: 0; padding: 7px 10px; color: var(--ink);
+  background: var(--vellumL); border: 1px solid rgba(90,74,53,.45); border-radius: 3px; transition: transform .12s, box-shadow .12s, border-color .12s; }
+.ftile:hover { border-color: var(--gilt); }
+.ftile.on { border: 2px solid var(--gilt); padding: 6px 9px; background: #f9f0db; box-shadow: 0 5px 12px rgba(60,35,10,.32); transform: translateY(-1px); }
+.ftile:focus-visible { outline: 2px solid var(--rubric); outline-offset: 2px; }
+.femb { flex: none; width: 36px; height: 36px; display: block; }
+.ftx { display: block; min-width: 0; }
+.ftile b { display: block; font: 700 16px var(--display); letter-spacing: .05em; }
+.ftile.on b::before { content: "✔ "; color: var(--rubric-ink); }
+.ftile .ftx > span { display: block; font-size: 14px; line-height: 1.25; color: var(--ink2); }
+.ftile .frec { display: block; font: 700 14px var(--font); font-style: normal; line-height: 1.2; color: var(--verd-d); }
+.fdet { margin-top: 8px; padding: 6px 10px 8px; background: rgba(255,250,235,.5); border-left: 3px solid var(--gilt); border-radius: 0 3px 3px 0; }
+.fdet .fdesc { margin: 4px 0 0; }
+.fdet .fdesc:first-child { margin-top: 0; }
+.fdet .fnote { font-style: italic; }
+.fpass { margin: 5px 0 0; padding-left: 18px; list-style: none; font-size: 14px; line-height: 1.35; color: var(--ink); }
+.fpass li { position: relative; margin: 2px 0; }
+.fpass li::before { content: ""; position: absolute; left: -14px; top: .55em; width: 6px; height: 6px; transform: rotate(45deg); background: var(--rubric); }
+.slot .femb-slot { width: 29px; height: 29px; }
+.dc.fc { background: #fbf3df; border-color: var(--gilt-lo); }
+@media (max-width: 1099px) { .ftiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 520px) { .ftiles { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .ftile { transition: none; } }

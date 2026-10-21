@@ -474,6 +474,16 @@ const SND = {
     tone(o, t, 'sine', 40, 300 * p, 0.6, 0.22, 0.4); nz(o, t, 0.5, 'bandpass', 300, 1800, 1, 0.15, 0.45); crackle(o, t + 0.2, 4, 0.35, 0.12);
     return 0.62;
   } },
+  // factions (FAC §6)
+  emp: { rl: 0.3, pri: 3, wet: 0.3, fn: (o, t, p) => {
+    tone(o, t, 'sawtooth', 1600 * p, 90 * p, 0.4, 0.1, 0.003); nz(o, t, 0.3, 'bandpass', 3000 * p, 600 * p, 2, 0.35);
+    tone(o, t, 'sine', 85 * p, 40, 0.35, 0.45); crackle(o, t + 0.05, 10, 0.45, 0.25); return 0.55;
+  } },
+  mor: { rl: 0.3, pri: 2, wet: 0.35, fn: (o, t, p) => { nz(o, t, 1.2, 'lowpass', 1300 * p, 300 * p, 1, 0.3, 0.25); roar(o, t + 0.1, 70 * p, 55 * p, 1.0, 0.08); return 1.3; } },
+  raise: { rl: 0.2, pri: 2, fn: (o, t, p) => { nz(o, t, 0.3, 'lowpass', 500 * p, 150, 1, 0.4, 0.01); vib(o, t + 0.15, 90 * p, 160 * p, 0.5, 0.1, 9, 10, 0.1); return 0.7; } },
+  turn: { rl: 0.3, pri: 2, wet: 0.4, fn: (o, t, p) => { bell(o, t, 330 * p, 0.8, 0.06, CHIME); vib(o, t, 220 * p, 180 * p, 0.5, 0.06, 5, 8, 0.05); return 0.9; } },
+  hangar: { rl: 0.08, pri: 1, fn: (o, t, p) => { tone(o, t, 'sine', 4200 * p, 2600 * p, 0.05, 0.05, 0.002); nz(o, t, 0.12, 'bandpass', 1500 * p, 3000 * p, 2, 0.2, 0.01); return 0.13; } },
+  thorns: { rl: 0.15, pri: 1, fn: (o, t, p) => { nz(o, t, 0.08, 'highpass', 2500 * p, 2500 * p, 1, 0.3); bell(o, t, 1900 * p, 0.2, 0.04, METAL); return 0.22; } },
   thit: { rl: 0.25, fn: (o, t, p) => {
     tone(o, t, 'sine', 85 * p, 48, 0.25, 0.5); nz(o, t, 0.12, 'lowpass', 600, 200, 1, 0.35); bell(o, t, 190 * p, 0.45, 0.06, METAL);
     return 0.45;
@@ -619,8 +629,8 @@ function every(key, on, ahead, fn) {
 function calm() { A.hb = 0; A.ck = false; A.gck = 0; A.geiger = 0; muffle(false); }
 
 /* ---------------- snapshot → sounds ---------------- */
-const FX_ANY = { k: 'gun', t: 'tgun', s: 'snipe', f: 'flame', h: 'heal', c: 'fuse', b: 'boom' };
-const FX_SIDE = { p: 'parry', g: 'guard', v: 'vet', r: 'sell', D: 'dash', U: 'horn', R: 'relic', P: 'promo' };
+const FX_ANY = { k: 'gun', t: 'tgun', s: 'snipe', f: 'flame', h: 'heal', c: 'fuse', b: 'boom', H: 'hangar' };
+const FX_SIDE = { p: 'parry', g: 'guard', v: 'vet', r: 'sell', D: 'dash', U: 'horn', R: 'relic', P: 'promo', E: 'emp', M: 'mor', Z: 'raise', W: 'turn' };
 const mine = x => (S.side === 0 ? x < S.half : x >= S.W - S.half);
 const inMistX = x => (typeof inMist === 'function' ? inMist(x) : x >= S.mist[0] && x <= S.mist[1]);
 const thX = s => (s === 0 ? -0.5 : S.W - 0.5);
@@ -647,7 +657,12 @@ function onSnap(m, prev, gone) {
     else if (ty === 'q') play('kshot', x, { foe: fo, st: fo ? -3 : 2 });
     else if (ty === 'z') { zc++; if (zx === null) zx = x; }
     else if (ty === 'm') {
-      if (f[3] < 0 || f[3] > S.W - 1) { play('bash', f[3]); bashed = true; } else play(f[5] === 2 ? 'bite' : 'clack', x);
+      if (f[3] < 0 || f[3] > S.W - 1) { play('bash', f[3]); bashed = true; }
+      else {
+        play(f[5] === 2 ? 'bite' : 'clack', x);
+        const tb = S.bmap && S.bmap.get(Math.round(f[3]) + ',' + Math.round(f[4]));   // melee into an Ostnatá zeď: thorns bite back
+        if (tb && tb.kind === 'ostnata' && tb.side !== f[5]) play('thorns', f[3], { foe: tb.side !== me });
+      }
     } else if (ty === 'a') {
       const tg = S.ents.get(f[6]);
       if (kr && f[6] === kr.id) play('whine', f[3]);

@@ -1,0 +1,22 @@
+{"v": 1, "default": "nahodna", "maps": [
+ {"id": "ruiny", "name": "Ruiny", "theme": "ruiny",
+  "desc": "Klasická mapa z verze 0.5: trosky leží v každé hře jinde.",
+  "half": ["........", "........", "........", "........", "........", "........", "........", "........", "........"],
+  "relic": [3, 5], "crates": [0, 1, 2, 3, 4, 5, 6, 7, 8], "random": {"base": [1, 4, 4], "mist": [6, 7, 3]}},
+ {"id": "predmesti", "name": "Předměstí", "theme": "predmesti",
+  "desc": "Otevřené ulice a rychlý kanál středem Mlhy. Nejlepší na první hry.",
+  "half": ["........", "..^.#...", "....#...", ".#......", "......~~", ".#......", "....#...", "..^.#...", "........"],
+  "relic": [3, 5], "crates": [0, 1, 2, 3, 4, 5, 6, 7, 8], "random": null},
+ {"id": "tovarna", "name": "Továrna", "theme": "tovarna",
+  "desc": "Sloupy zavírají střed Mlhy a projít se dá třemi uličkami. Dobře se tu brání.",
+  "half": ["......XX", "......XX", "........", "...#..X.", "...#....", "...#..X.", "........", "......XX", "......XX"],
+  "relic": [3, 5], "crates": [2, 3, 4, 5, 6], "random": null},
+ {"id": "most", "name": "Most", "theme": "most",
+  "desc": "Řeka dělí mapu a přejít ji lze jen po třech mostech. Věže na vyvýšených místech vidí a střílí dál.",
+  "half": [".......w", ".......=", "..#....w", "...^...w", ".......=", "...^...w", "..#....w", ".......=", ".......w"],
+  "relic": [4, 4], "crates": [1, 7], "random": null},
+ {"id": "metro", "name": "Metro", "theme": "metro",
+  "desc": "Dva rychlé kanály vedou od trůnu k trůnu a základny jsou menší. Rozhoduje tempo.",
+  "half": ["....#...", ".#......", ".~~~~~~~", "....#...", "...^....", "....#...", ".~~~~~~~", ".#......", "....#..."],
+  "relic": [3, 5], "crates": [0, 1, 3, 4, 5, 7, 8], "random": null}
+]}
