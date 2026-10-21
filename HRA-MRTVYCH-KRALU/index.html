@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hra mrtvých králů</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;900&family=Alegreya+Sans:ital,wght@0,500;0,700;0,800;1,500&family=Grenze+Gotisch:wght@600;800&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="lobby">
+  <canvas id="lobbyBg" aria-hidden="true"></canvas>
+  <div class="sconce l" aria-hidden="true"></div><div class="sconce r" aria-hidden="true"></div>
+  <button class="optBtn" id="optLobby" tabindex="-1" title="Zvuk a efekty (M ztlumí)"></button>
+  <div class="lwrap">
+    <header class="lhead">
+      <canvas id="logoCrown" width="120" height="84" aria-hidden="true"></canvas>
+      <div class="eyebrow">LAN · 1 v 1 · <span id="ver">v0.5</span></div>
+      <h1 class="logo"><span class="la">Hra mrtvých</span><span class="lb">králů</span></h1>
+      <div class="rubr" aria-hidden="true"><i></i></div>
+      <p class="tagline">Dva mrtví králové. Jedno město. <b>Mlha</b> mezi nimi.</p>
+    </header>
+    <div class="lcols">
+      <section class="folio orn lcol">
+        <label class="lbl" for="name">Tvé jméno</label>
+        <input type="text" id="name" maxlength="16" placeholder="Král" autocomplete="off">
+        <div class="slots" id="slots"></div>
+        <div class="note hidden" id="note"></div>
+        <h3>Režim hry</h3>
+        <div class="modes">
+          <button class="mode" data-mode="kral" style="--c:#c9a24a"><img class="ico big" data-icon="kral" data-col="#c9a24a" alt=""><span><b>Král</b><span>Ovládáš postavu (WASD): střílí, blokuje, opravuje a sbírá bedny. Víc akce.</span></span></button>
+          <button class="mode" data-mode="strateg" style="--c:#6a4a9a"><img class="ico big" data-icon="odstrel" data-col="#a77bd6" alt=""><span><b>Stratég</b><span>Bez postavy. Pět velitelských schopností s dobou obnovy. Víc přemýšlení.</span></span></button>
+        </div>
+        <label class="chk"><input type="checkbox" id="tipsChk"> Rady pro nové hráče během hry</label>
+        <div class="row">
+          <button class="btn primary big" id="readyBtn">Jsem připraven</button>
+          <button class="btn dark" id="helpBtn">Jak se hraje</button>
+        </div>
+        <div class="err" id="err"></div>
+        <div class="urls" id="urls"></div>
+        <div class="tipday" id="tipday"></div>
+      </section>
+      <section class="folio orn lcol">
+        <div class="deckhead">
+          <h3>Balíček</h3><span id="deckCount" title="Vybrané karty"></span>
+          <button class="btn small" id="deckRec">Doporučený</button>
+          <button class="btn small dark" id="deckClear">Vyčistit</button>
+        </div>
+        <p class="muted">Vždy máš Generátor, Zeď a Tlupu. K nim vyber 8 karet. Soupeř tvůj výběr neuvidí. Karty s Dobou II se odemknou až po dvou výzkumech.</p>
+        <div id="deck"><p class="muted">Načítám karty ze serveru…</p></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="game" class="hidden">
+  <div id="top">
+    <div class="res e" id="resE" title="Energie"><span data-ic="e"></span><b id="rE">0</b><small id="rInc"></small></div>
+    <div class="res s" id="resS" title="Šrot"><span data-ic="s"></span><b id="rS">0</b><button class="conv" id="convBtn" tabindex="-1" title="Přetavit 30 ⚡ na 10 🔩 (C) · od Doby II"><span data-ic="e"></span>→<span data-ic="s"></span></button></div>
+    <div class="res v" id="resV" title="Vzorky"><span data-ic="v"></span><b id="rV">0</b><small id="rDoba"></small></div>
+    <button class="btn small dark" id="resBtn" tabindex="-1" title="Výzkum (V)">Výzkum <kbd>V</kbd></button>
+    <div class="thr me"><div class="lb"><span class="nm" id="thMeN">Tvůj trůn</span><span id="thMeV"></span></div><div class="bar" id="thMeBar"><i class="trail" id="thMeT"></i><i class="fill" id="thMe"></i></div></div>
+    <div id="clockBox"><div id="clock">00:00</div><div id="phase"></div></div>
+    <div class="thr foe"><div class="lb"><span class="nm" id="thFoeN">Soupeř</span><span id="thFoeV"></span></div><div class="bar" id="thFoeBar"><i class="trail" id="thFoeT"></i><i class="fill" id="thFoe"></i></div></div>
+    <div id="chips"><div class="chip hidden" id="eclChip"></div><div class="chip hidden" id="relicChip"></div></div>
+    <button class="optBtn" id="optBtn" tabindex="-1" title="Zvuk a efekty (M ztlumí)"></button>
+  </div>
+  <div id="stage">
+    <div id="hud"><div id="banner"></div></div>
+    <div id="board">
+      <canvas id="cv"></canvas>
+      <div id="marks" aria-hidden="true"></div>
+      <div id="tip" class="hidden"></div>
+    </div>
+    <div id="ann" aria-live="polite"></div>
+  </div>
+  <div id="side" class="orn"><div id="sideMain"></div><div id="toasts" aria-live="polite"></div></div>
+  <div id="bar"></div>
+</div>
+
+<div id="floats" aria-hidden="true"></div>
+<div id="curMsg" class="hidden" role="status"></div>
+
+<div id="optPop" class="hidden" role="dialog" aria-label="Zvuk a efekty">
+  <h4>Zvuk a efekty</h4>
+  <label class="sl"><span>Efekty</span><input type="range" min="0" max="100" step="5" data-o="sfx"><output data-v="sfx"></output></label>
+  <label class="sl"><span>Hudba</span><input type="range" min="0" max="100" step="5" data-o="mus"><output data-v="mus"></output></label>
+  <label class="ck"><input type="checkbox" data-o="mute"> Ztlumit vše <kbd>M</kbd></label>
+  <div class="seg"><span>Otřesy obrazovky</span><div class="segs"><button tabindex="-1" data-shake="0">vypnuto</button><button tabindex="-1" data-shake="0.4">slabé</button><button tabindex="-1" data-shake="1">plné</button></div></div>
+  <label class="ck"><input type="checkbox" data-o="flash"> Záblesky</label>
+  <label class="ck"><input type="checkbox" data-o="nums"> Čísla poškození</label>
+  <label class="ck"><input type="checkbox" data-o="calm"> Klidné efekty <small>bez otřesů, záblesků a zpomalení</small></label>
+</div>
+
+<div id="endOv" class="ov hidden">
+  <div class="card folio orn end">
+    <canvas id="endCrown" width="220" height="140" aria-hidden="true"></canvas>
+    <h1 id="endT"></h1>
+    <div class="sub" id="endR"></div>
+    <table id="endS"></table>
+    <button class="btn primary big" id="endBtn">Zpět do lobby</button>
+  </div>
+</div>
+
+<div id="resOv" class="ov hidden">
+  <div class="card folio orn wide">
+    <div class="rhead"><h2><img class="ico" data-icon="vzorek" data-col="#a77bd6" alt="">Výzkum</h2><span id="resInfo" class="muted"></span><button class="btn small dark" id="resClose" tabindex="-1">Zavřít <kbd>V</kbd></button></div>
+    <div class="rtree" id="resTree"></div>
+  </div>
+</div>
+
+<div id="helpOv" class="ov hidden">
+  <div class="card folio orn help">
+    <h2>Jak se hraje</h2>
+    <h3>Cíl</h3>
+    <ul>
+      <li>Znič soupeřův <b>Trůn</b> nebo mu dej <b>šach-mat</b>. Svůj trůn máš vždy vlevo.</li>
+      <li>Zápas trvá náhodně 10–15 min. Pak přijde <b>Poslední noc</b>: tma, Mlha každých 20 s pohltí další sloupec a trůny ztrácejí životy. Padnou-li oba naráz, vyhraje ten, kdo nadělal víc škody.</li>
+    </ul>
+    <h3>Pole a Mlha</h3>
+    <ul>
+      <li>Stavíš a nasazuješ jen na <b>své polovině</b>. Uprostřed je <b>Mlha</b>, odkud lezou zombie na oba hráče. Mlha pomalu ubírá životy.</li>
+      <li>Od poloviny zápasu se Mlha rozšiřuje do základen. Stavby v ní chátrají.</li>
+      <li>Soupeře vidíš jen <b>průzkumem</b> (Hláska, dron, jednotky, Král). <b>Věže střílí jen tam, kam vidíš.</b></li>
+      <li><b>Zatmění</b> ve 4., 7. a 10. minutě: 25 s tmy, věže vidí jen 1,5 pole a jednotky polovinu. Ohlásí se 15 s předem.</li>
+    </ul>
+    <h3>Bedny a Relikvie</h3>
+    <ul>
+      <li>Do Mlhy padají <b>zásobovací bedny</b> (energie, šrot, Vzorky, někdy karta zdarma). Sebrat bednu trvá 3 s: jednotka na poli, Král u ní nebo sběrný dron. Když u ní stojí oba hráči, je <b>sporná</b>.</li>
+      <li>Od 2. minuty je uprostřed Mlhy <b>Relikvie</b>. Obsadíš ji, když tam 5 s stojí jen tvoje jednotka nebo Král. Dává +2 <span data-ic="e"></span>/s a každých 40 s 1 <span data-ic="v"></span>.</li>
+    </ul>
+    <h3>Režimy</h3>
+    <ul>
+      <li><b>Král:</b> <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> pohyb, střílí sám. <kbd>Mezerník</kbd> blok (−70 % poškození; v prvních 0,3 s odrazí střelu). <kbd>Shift</kbd> výpad. <kbd>F</kbd> oprava stavby (stojí šrot). <kbd>Q</kbd> válečný pokřik, když je nabitý: 8 s chrání a zrychluje tvé jednotky kolem Krále. Mrtvý Král se vrátí za 15 s, do té doby nemůžeš stavět.</li>
+      <li><b>Stratég:</b> <kbd>Q</kbd> oprava, <kbd>W</kbd> odstřel (cíl i posvítí), <kbd>E</kbd> sběrný dron, <kbd>R</kbd> štít trůnu, <kbd>G</kbd> Útok! (tvé jednotky 6 s odolnější a rychlejší).</li>
+    </ul>
+    <h3>Karty, vylepšení a výzkum</h3>
+    <ul>
+      <li>V lobby si složíš <b>balíček 8 karet</b> (stavby, jednotky s šachovými pohyby, schopnosti).</li>
+      <li>Klikni na svou stavbu a zmáčkni <kbd>U</kbd>. Na úrovni 2 zmáčkni <kbd>U</kbd> a pak <kbd>A</kbd> nebo <kbd>B</kbd> (nebo klikni na cestu).</li>
+      <li><b>Přetavení</b> <kbd>C</kbd> promění 30 <span data-ic="e"></span> na 10 <span data-ic="s"></span> (od Doby II).</li>
+      <li><b>Vzorky</b> <span data-ic="v"></span> utrácíš za <b>výzkum</b> (<kbd>V</kbd>). Po 2 výzkumech přijde <b>Doba II</b> (silnější karty), po 5 <b>Doba III</b> (+2 energie/s).</li>
+      <li>Pěšák u soupeřova trůnu se <b>promění v Dámu</b> (když žádnou nemáš, zůstanou mu jeho zranění). Jednotka se 3 zářezy se stane <b>veteránem</b>.</li>
+    </ul>
+    <h3>Šach-mat</h3>
+    <ul>
+      <li><b>Šach</b>: soupeřovy jednotky stojí u tvého trůnu aspoň ve 3 řadách a ty se nemůžeš bránit (Král je mrtvý / Odstřel i Štít se obnovují).</li>
+      <li>Když šach trvá 10 s, je to <b>mat</b> a prohráváš.</li>
+    </ul>
+    <h3>Ovládání</h3>
+    <ul>
+      <li><kbd>1</kbd>–<kbd>0</kbd> karty z lišty, <kbd>T</kbd> tlupa, <kbd>V</kbd> výzkum, <kbd>U</kbd> vylepšit, <kbd>X</kbd> prodat, <kbd>C</kbd> přetavit (od Doby II), <kbd>M</kbd> zvuk, <kbd>Esc</kbd> nebo pravé tlačítko zrušit, <kbd>H</kbd> nápověda</li>
+    </ul>
+    <button class="btn primary" id="helpClose" tabindex="-1">Rozumím</button>
+  </div>
+</div>
+
+<script src="js/base.js"></script>
+<script src="js/paint.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/render.js"></script>
+<script src="js/input.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
