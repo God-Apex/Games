@@ -547,7 +547,11 @@ class Game(ActionsMixin, CombatMixin, MoveMixin, KingMixin, WorldMixin, VisionMi
     def start_info(self, s):
         """The game part of the 'start' message for side s."""
         msg = {'t': 'start', 'side': s, 'names': self.names, 'w': W, 'h': H, 'half': HALF, 'mist': MIST,
-               'mode': self.mode, 'deck': self.sd[s].deck, 'throne': D.THRONE_HP, 'horde': [D.HORDE_COST, D.HORDE_CD]}
+               'mode': self.mode, 'deck': self.sd[s].deck, 'throne': D.THRONE_HP, 'horde': [D.HORDE_COST, D.HORDE_CD],
+               'thmax': [int(math.ceil(self.throne[0])), int(math.ceil(self.throne[1]))],
+               # when the Relikvie wakes (s); None = this game type has no Relikvie (the client hides chip and zone)
+               'relic_at': (D.RELIC_FROM if getattr(self.rules, 'relic', False)
+                            else 0 if getattr(self.rules, 'use_relic', False) else None)}
         fac = self.sd[s].fac
         F = factions.FACTIONS[fac]
         msg.update({'fac': list(self.facs), 'costs': factions.base_costs(fac), 'rcost': factions.research_costs(fac),

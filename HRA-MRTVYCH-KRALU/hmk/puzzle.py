@@ -148,11 +148,11 @@ STAR_METRIC = {'throne_min': ('throne', 'min'), 'time_max': ('t', 'max'), 'spent
                'alive_min': ('alive', 'min')}
 
 
-def eval_stars(puzzle, g, metrics):
-    """Stars 0-3: 0 when the puzzle failed, else 1 + each further star whose condition holds (each on its own)."""
+def star_hits(puzzle, metrics):
+    """Per-star flags [b, b, b] (sent as end.puzzle.hit); all False when the puzzle failed."""
     if not metrics.get('ok'):
-        return 0
-    n = 0
+        return [False] * len(puzzle['stars'])
+    out = []
     for s in puzzle['stars']:
         k, v = s['k'], s.get('v', 0)
         if k == 'win':
@@ -162,8 +162,13 @@ def eval_stars(puzzle, g, metrics):
         else:
             name, op = STAR_METRIC[k]
             hit = metrics[name] >= v if op == 'min' else metrics[name] <= v
-        n += 1 if hit else 0
-    return n
+        out.append(bool(hit))
+    return out
+
+
+def eval_stars(puzzle, g, metrics):
+    """Stars 0-3: 0 when the puzzle failed, else 1 + each further star whose condition holds (each on its own)."""
+    return sum(1 for h in star_hits(puzzle, metrics) if h)
 
 
 # ------------------------------------------------------------------ foe scripts
@@ -393,7 +398,8 @@ class PuzzleRules(Rules):
         m = self.metrics(g)
         m['ok'] = ok
         stars = eval_stars(self.p, g, m)
-        self.result = {'id': self.p['id'], 'ok': ok, 'stars': stars, 't': m['t'], 'metrics': m}
+        self.result = {'id': self.p['id'], 'ok': ok, 'stars': stars, 't': m['t'], 'metrics': m,
+                       'hit': star_hits(self.p, m)}
         g.throne[0] = max(0.0, g.throne[0])
         return {'winner': 0 if ok else 1, 'reason': reason, 'code': 'solved' if ok else 'failed'}
 
@@ -458,5 +464,6 @@ class PuzzleRules(Rules):
     def end_extra(self, g):
         if self.result is None:                       # quit / disconnect / error: not solved
             m = self.metrics(g)
-            self.result = {'id': self.p['id'], 'ok': False, 'stars': 0, 't': m['t'], 'metrics': m}
+            self.result = {'id': self.p['id'], 'ok': False, 'stars': 0, 't': m['t'], 'metrics': m,
+                           'hit': [False] * len(self.p['stars'])}
         return {'puzzle': self.result}

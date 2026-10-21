@@ -85,4 +85,59 @@ Hlášení M2-D „po quit jsou statistiky 0“ se nepotvrdilo (server je počí
 - 20. 10. 2026: M3-E2 HOTOVO (run_fast 301 testů GREEN, Přežití/Výuka/puzzle/úvodní okno ověřeny v prohlížeči). Požadavky pro gate M3:
   M3-B2 přidat `hit:[b,b,b]` do `end.puzzle` (jinak u 2 hvězd „nejisté“); ui.js používá `S.throneMax` pro oba trůny
   (puzzle p01 ukazuje 500/3000); nadpis konce hry v ui.js říká „Porážka/Vítězství“ i u Přežití a puzzlí.
-- Zbývá: M3-G (pozastaveno), pak gate M3, potom M4 a M5.
+- 21. 10. 2026: M3-G hotovo, gate M3 viz níže.
+
+## M3 – Obsah: HOTOVO (gate PASS s výhradou B1 sanity, 2026-10-21)
+| Balík | Model | Výsledek |
+|---|---|---|
+| M3-A frakce server | opus | `factions.py`, `facmech.py`, §2.3 pravidla, test_factions 29 |
+| M3-B1 Přežití + Výuka | sonnet | `SurvivalRules`, `TutorialRules`, test_survival 30, test_tutorial 22 |
+| M3-B2 hádanky | opus | 10 hádanek, `eval_stars`, `puzzle_solutions.py`, test_puzzles |
+| M3-C AI obsah | sonnet | `facplay.py`, FACTION_PLAN, profil Přežití, mapové váhy, `planner.cross/_fit` |
+| M3-D kresba frakcí | opus | FAC_ART, emblémy, 9 spritů, fx H E M Z W, 6 zvuků |
+| M3-E1 klient frakce | sonnet | výběr frakce, balíčky per frakce, HUD emblémy, ceny ze `start` |
+| M3-E2 klient režimy | sonnet | mřížka hádanek, HUD Přežití/hádanek, `#tutCard`, `#pauseOv`, `#welcomeOv` |
+| M3-F meta server | sonnet | Store, `me`, `stats_q`, `cos`, `end.me/ser/lv`, test_session_meta 17 |
+| M3-G nástroje vyvážení | sonnet | `facbots.py`, `facrun.py` (matrix crack spam ablate perf b6 fair selftest) |
+
+Integrace na gate (log `progress/M3-GATE.md`):
+- `hmk/puzzle.py`: `star_hits()`, `end.puzzle.hit:[b,b,b]` (i při nevyřešení/odchodu).
+- `hmk/game.py start_info`: `thmax` (maximum trůnu za stranu), `relic_at` (kdy se Relikvie probudí; `None` = režim bez Relikvie, hádanky 0).
+- `js/ui.js`: `S.thMax` pro oba trůny (throneBar, oznámení, `render.js` trůn), nadpis konce hry podle typu
+  (Hádanka vyřešena/nevyřešena, Výuka dokončena/ukončena, Konec přežití, Vydržel jsi déle / Soupeř vydržel déle),
+  čip a zóna Relikvie skryté bez Relikvie (`S.noRelic`, per-game `S.relicFrom`).
+- `hmk/modes.py _fmt_time` zaokrouhluje stejně jako klient (dřív 3:54 vs 3:55).
+- `dev/tests/fuzz.py --content N`: všechny typy her × frakce, 10 hádanek, Výuka (přes `session.build_game`, start/snap/end JSON strict).
+- `dev/tests/test_puzzles.py`: kontrola `hit`, `thmax`, `relic_at`.
+- Korektura češtiny (254 řetězců M3): „Vítej ve Hře mrtvých králů“, „Jsem připraven“ v uvozovkách.
+
+### Gate
+| Kritérium | Výsledek |
+|---|---|
+| golden.py 10 seedů × 2 režimy (compat05) | 20/20 identické (2×, před i po opravách) |
+| run_fast (test_factions 29, test_puzzles, test_survival, test_tutorial, test_session_meta, …) | 301 testů GREEN (3×) |
+| fuzz: 4×2 duel 400 s + content 26 konfigurací × 3 seedy × 400 s + lobby 6 | 703 737 akcí, 0 chyb |
+| puzzle_solutions (v test_puzzles) | všech 10 na 3 hvězdy, 2× stejné metriky; idle nikdy 3 hvězdy |
+| facrun all --quick (M3-G, 1493 s) | A9 PASS (exo 94,5 %, ostatní ≥ 99 %), B5 B6 B7 PASS |
+| facrun matrix --quick sanity 30–70 % | **FAIL**: bez–kult Stratég 90 %, bez–prez Král 75 % (n=20) → M5-A |
+| ai_ladder --fac 10 seedů × 2 režimy × 2 strany (předměstí) | prez 65,0 / korp 60,0 / kult 47,5 % PASS; usage OK (exo 80 %, nekromant 90 %) |
+| perf.py --compare --b7 | B7 OK (p99 0,75 ms, max 1,08 ms, snapshot max 4,0 KB, 83 entit). Poměr k 0.5: s pravidly 1.0 1,27 (jiné hry), se `HMK_COMPAT05=1` 1,039 OK |
+| Prohlížeč 8097, 1366×768 | úvodní okno; Výuka Král i Stratég dokončena (kroky řízené zprávami protokolu, ne klávesnicí); p01 a p02 na 3 hvězdy přes mřížku hádanek, hvězdy ✔✔✔; Esc pauza zastaví čas, „Začít znovu“ funguje; sólo Přežití (Kult, Stratég) dohráno do konce; Souboj prez–korp (Král) a kult–bez (Stratég) ve 2 tabech: frakční karty fungují, soupeřova frakce v lobby skrytá, odhalená ve `start`; 0 chyb v konzoli i v logu serveru |
+
+### Rozbor B1 (pro M5-A)
+- Kult ve Stratégovi: duel bot čeká skoro pořád na obnovu věží (křehké stavby Kultu), za celý zápas vyšle 1 jednotku;
+  AI za Kult má ve Stratégovi taky jen 20 %. Varianty `first_unit` (scratchpad) 90 → 85/75 %, tedy nejde o jednu chybu bota.
+  Ablace nekromant→medik dává Kultu ve Stratégovi 50 % (Nekromant v kompozici je slabý).
+- Přeživší jako obránce: crack 10–60 %, útočník je neprolomí (B2). Přeživší v Králi proti Bez frakce 25 %.
+
+### Otevřené body
+- M5-A: B1–B4 z `_out/report_fac_q1.txt` (kult Stratég, prez turtle, spam proti Kultu, výhoda strany 0 ~55 % zděděná z 0.5).
+- M3-G hlásil jeden neopakovatelný RED v run_fast při zátěži; v gate 3/3 GREEN.
+- UI: popisek „Plamenomet“ v liště se při 1366×768 láme uvnitř slova (`#bar .bb b overflow-wrap:anywhere`) → M4-C;
+  sólo Přežití ukazuje slot Tlupa a hádanky slot „Četa na Relikvii“ (server je odmítne) → M4;
+  dlouhé nadpisy konce hry se zalomí na 2 řádky (vypadá dobře); „Puzzle“ vs „Hádanka“ sjednotit v M5-D.
+- Dříve otevřené: výkon dema během zatmění, software canvas, `meta.xp_gain` po quit, zvuky neposlouchané.
+
+### Jak pokračovat
+- Další je **M4** (M4-A sonnet, M4-B sonnet, M4-C sonnet, M4-E haiku) workflow `hmk-milestones.js`, pak M5.
+- Commit/push dělá jen vedoucí na pokyn uživatele (repo Games je veřejné).

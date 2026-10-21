@@ -144,7 +144,7 @@ def wave_mult(k):
 
 
 def _fmt_time(t):
-    t = int(t)
+    t = int(round(t))                  # same rounding as end.tm and the client (fmtT)
     return '%d:%02d' % (t // 60, t % 60)
 
 

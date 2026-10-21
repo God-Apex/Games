@@ -3,7 +3,8 @@
   python facrun.py <suite|all> [--quick] [--seeds N] [--modes kral,strateg] [--workers N] [--tag T]
                                [--knob key=value ...] [--rejudge]
 
-Suites (SPEC 7.2, seeds per cell in brackets; every seed is played twice, with the sides swapped, draws count 1/2):
+Suites (SPEC 7.2, seeds per cell in brackets; every seed is played twice, with the sides swapped, draws count 1/2;
+  a mirror pair gets seed+100 on the swapped leg, the swapped game would repeat the first):
   matrix   B1  10 faction pairs (mirrors included) x 2 modes x [20] x 2 seatings = 800, scenario `duel`; every non-mirror pair
                40-60 %, each faction pooled 45-55 %. Also A9/B5 card usage >= 80 % and the input of `fair` and `ablate`.
   crack    B2  16 ordered pairs, ATT(f) vs TURTLE(g) (prez turtles use wallturtle for half the seeds) x 2 modes x [10] x 2
@@ -79,7 +80,8 @@ def tasks_matrix(args):
         for mode in args.modes:
             for seed in seeds_of('matrix', args):
                 for swap in (False, True):
-                    out.append(T(sc, 'matrix:%s-%s' % (a, b), mode, seed, swap))
+                    # a mirror pair played with the sides swapped is the very same game: its second leg gets another seed
+                    out.append(T(sc, 'matrix:%s-%s' % (a, b), mode, seed + 100 if (a == b and swap) else seed, swap))
     return out
 
 
@@ -410,7 +412,12 @@ def selftest(args):
     sk = dict(FB.duel_scen('kult', 'kult'), length=600, t_end=330)
     k = H.run_game(T(sk, 'st', 'kral', 3, False))
     chk('usage counts', all(k['used'][s].get('gen', 0) >= 3 for s in (0, 1)), str(k['used'][0]))
-    chk('kult uses hnizdo and horde', all(k['used'][s].get('hnizdo', 0) >= 1 and k['used'][s].get('horde', 0) >= 1 for s in (0, 1)), str(k['used'][0]))
+    chk('kult builds hnizdo, uses Mor and Tlupa', all(k['used'][s].get('hnizdo', 0) >= 1 for s in (0, 1)) and any(
+        k['used'][s].get('horde', 0) >= 1 and k['used'][s].get('mor', 0) >= 1 for s in (0, 1)), str(k['used']))
+    fl = H.run_game(T(dict(FB.flood_scen('bez'), t_end=300), 'st', 'kral', 3, False))
+    chk('flood: Tlupa spam, no units', fl['used'][0].get('horde', 0) >= 5 and fl['u0_n'] == 0 and fl['used'][0].get('hnizdo', 0) == 2, str(fl['used'][0]))
+    ke = H.run_game(T(dict(FB.duel_scen('korp', 'bez'), length=700, t_end=520), 'st', 'kral', 4, False))
+    chk('korp uses exo and emp', ke['used'][0].get('exo', 0) >= 1 and ke['used'][0].get('emp', 0) >= 1, str(ke['used'][0]))
     # knobs apply for one game only
     z0 = FM.FACTIONS['prez']['mods']['zed_hp']
     kn = H.run_game(T(scen, 'st', 'kral', 5, False, knobs={'fac.prez.ucost': 1.6, 'def.emp.dur': 2.5, 'const.OWNED_CAP': 7}))

@@ -32,6 +32,7 @@ class Solutions(unittest.TestCase):
                 self.assertEqual(g.over['code'], 'solved', a)
                 self.assertTrue(a['ok'])
                 self.assertEqual(a['stars'], 3, a)
+                self.assertEqual(a['hit'], [True, True, True])            # end.puzzle.hit (client star list)
                 self.assertEqual(a['metrics'], b['metrics'])
                 self.assertEqual(a['t'], b['t'])
 
@@ -41,6 +42,8 @@ class Solutions(unittest.TestCase):
                 res, g = PS.run(pid, [])
                 self.assertIn(g.over['code'], ('solved', 'failed'))
                 self.assertLess(res['stars'], 3, res)
+                self.assertEqual(len(res['hit']), 3)
+                self.assertEqual(res['stars'], sum(res['hit']), res)
 
 
 class Data(unittest.TestCase):
@@ -106,6 +109,9 @@ class Rules(unittest.TestCase):
         self.assertEqual(st['deck'], sd.deck)
         self.assertEqual(st['puzzle']['id'], 'p02')
         self.assertEqual(st['puzzle']['throne'], [1200, 3000])
+        self.assertEqual(st['thmax'], [1200, 3000])                   # per-side throne maximum for the HUD
+        self.assertIsNone(st['relic_at'])                              # p02 has no Relikvie
+        self.assertEqual(PS.build('p08').start_info(0)['relic_at'], 0)
         g.step(TICK)
         snap = g.snapshot(0, [])
         self.assertEqual(snap['pz'], [30, 0, 30])
@@ -138,6 +144,7 @@ class Rules(unittest.TestCase):
         self.assertEqual(end['puzzle']['id'], 'p03')
         self.assertFalse(end['puzzle']['ok'])
         self.assertEqual(end['puzzle']['stars'], 0)
+        self.assertEqual(end['puzzle']['hit'], [False, False, False])
         for k in ('t', 'throne', 'spent', 'lost', 'king_hp', 'parries', 'left', 'cards', 'units', 'alive'):
             self.assertIn(k, end['puzzle']['metrics'])
         g2 = PS.build('p04')                                          # quit before the end: not solved

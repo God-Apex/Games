@@ -66,7 +66,7 @@ const dec = v => String(v).replace('.', ',');
 function onDefs(m) {
   Object.assign(S, { defs: m.defs, research: m.research, branches: m.branches, cmds: m.cmds, cmds0: m.cmds, base: m.base, pool: m.pool,
     recommended: m.recommended, deckSize: m.deckSize, rarity: m.rarity, dobaAt: m.dobaAt,
-    conv: m.conv && m.conv.length >= 2 ? [m.conv[0], m.conv[1], m.conv[2] || 1] : [30, 10, 2], relicFrom: m.relicFrom || 120, relicDef: m.relic || null, relicZone: m.relic || null });
+    conv: m.conv && m.conv.length >= 2 ? [m.conv[0], m.conv[1], m.conv[2] || 1] : [30, 10, 2], relicFrom: m.relicFrom || 120, relicFrom0: m.relicFrom || 120, relicDef: m.relic || null, relicZone: m.relic || null });
   $('#ver').textContent = 'v' + m.ver;
   $('#convBtn').title = `Přetavit ${S.conv[0]} ⚡ na ${S.conv[1]} 🔩 (C)` + (S.conv[2] > 1 ? ` · od Doby ${roman(S.conv[2])}` : '');
 }
@@ -160,13 +160,20 @@ function startGame(m) {
     side: m.side, names: m.names, mode: m.mode, myDeck: m.deck, W: m.w, H: m.h, half: m.half, mist: m.mist,
     type: m.type || 'souboj', solo: !!m.solo, tut: !!m.tut, map: m.map || null, theme: (m.map && m.map.theme) || 'ruiny', paused: false,
     kit: Array.isArray(m.kit) ? m.kit : S.base,
-    horde: m.horde, throneMax: m.throne, snap: null, pick: null, sel: null, inGame: true, ending: false, sideHtml: '', resHtml: '',
+    horde: m.horde, throneMax: m.throne, thMax: [m.throne, m.throne], snap: null, pick: null, sel: null, inGame: true, ending: false, sideHtml: '', resHtml: '',
     kp: null, seenEnemy: false, keys: {}, inp: { mx: 0, my: 0, b: false, r: false, d: false, u: false }, choose: null,
     zk: [], streakT: 0, readyT: 0, shineT: 0, resTw: null,
     // factions: both sides' ids (the foe's is revealed here), own prices, research costs, merged commands, King perk, Doba overrides
     facs: Array.isArray(m.fac) && m.fac.length === 2 ? m.fac : ['bez', 'bez'], costs: m.costs || null, rcost: m.rcost || null,
     cmds: m.cmds || S.cmds0 || S.cmds, perk: m.perk || null, fdoba: m.doba || null,
   });
+  // per-side throne maximum (puzzles and Výuka start with other values than m.throne)
+  const tmx = m.puzzle && Array.isArray(m.puzzle.throne) ? m.puzzle.throne : Array.isArray(m.thmax) ? m.thmax : null;
+  if (tmx && tmx.length === 2) S.thMax = tmx.map(v => Math.max(1, +v || m.throne));
+  S.throneMax = S.thMax[S.side];
+  // Relikvie: per game (puzzles wake it at 0, Přežití and Výuka have none); an older server sends no relic_at
+  S.noRelic = m.relic_at === null;
+  S.relicFrom = typeof m.relic_at === 'number' ? m.relic_at : S.noRelic ? 1e9 : (S.relicFrom0 || 120);
   S.ents.clear(); S.ghosts.clear(); S.bmap.clear(); S.fx = []; S.aims.clear(); S.lasers = [];
   S.steps = new Set(); S.shownTips = new Set();
   // the Relikvie sits in columns 7-8 on every map, its rows come from the map (defs.maps[].relic = [y0, y1])
@@ -612,8 +619,8 @@ function hud(m, prev) {
     ec.classList.toggle('ecl2', e[0] === 2);
   }
   const rc = $('#relicChip'), rl = m.rl;
-  rc.classList.toggle('hidden', !rl);
-  if (rl) {
+  rc.classList.toggle('hidden', !rl || !!S.noRelic);
+  if (rl && !S.noRelic) {
     const [own, cap, p, smp] = rl;
     let t, cls = '';
     if (m.tm < S.relicFrom) t = `probudí se za ${mmss(S.relicFrom - m.tm)}`;
@@ -634,8 +641,8 @@ function hud(m, prev) {
   setHtml($('#banner'), ban.map(([c, k, t]) => `<div class="ban ${c}"${k ? ` data-k="${k}"` : ''}>${t}</div>`).join(''));
 }
 function throneBar(id, side, m, prev) {
-  const hp = Math.max(0, m.th[side]), f = 100 * hp / S.throneMax, bar = $('#th' + id + 'Bar');
-  $('#th' + id + 'V').textContent = hp + ' / ' + S.throneMax + (m.sh[side] > 0 ? ' · štít' : '');
+  const mx = S.thMax[side] || S.throneMax, hp = Math.max(0, m.th[side]), f = Math.min(100, 100 * hp / mx), bar = $('#th' + id + 'Bar');
+  $('#th' + id + 'V').textContent = hp + ' / ' + mx + (m.sh[side] > 0 ? ' · štít' : '');
   $('#th' + id).style.width = f + '%';
   const tr = $('#th' + id + 'T');
   if (!prev || hp >= prev.th[side]) { tr.style.transition = 'none'; tr.style.width = f + '%'; void tr.offsetWidth; tr.style.transition = ''; }
@@ -719,12 +726,12 @@ function annClear() { clearTimeout(ANN.t); ANN.q = []; ANN.cur = null; ANN.state
 // announcements derived from state changes (work with any server that sends the field)
 function annDiff(m, p) {
   if (!p) return;
-  const me = S.side, foe = 1 - me, tmx = S.throneMax;
+  const me = S.side, foe = 1 - me, tmx = S.thMax[me] || S.throneMax, fmx = S.thMax[foe] || S.throneMax;
   if (m.ck[me] > 0 && !(p.ck[me] > 0)) announce('Šach!', 'Ubraň řadu u trůnu, jinak za 10 s prohraješ', 1, 'bad');
   if (m.ck[foe] > 0 && !(p.ck[foe] > 0)) announce('Dáváš šach!', 'Udrž jednotky u trůnu 10 s', 1, 'good');
   for (const f of [0.5, 0.25, 0.1]) {
     if (m.th[me] <= tmx * f && p.th[me] > tmx * f) announce('Trůn v ohrožení', `zbývá ${f * 100} %`, 1, 'bad');
-    if (f > 0.1 && m.th[foe] <= tmx * f && p.th[foe] > tmx * f) announce('Soupeřův trůn slábne', `zbývá ${f * 100} %`, 3, 'good');
+    if (f > 0.1 && m.th[foe] <= fmx * f && p.th[foe] > fmx * f) announce('Soupeřův trůn slábne', `zbývá ${f * 100} %`, 3, 'good');
   }
   const kd = !!(m.kr && m.kr.dead > 0), pkd = !!(p.kr && p.kr.dead > 0);
   if (kd && !pkd) announce('Král padl', `návrat za ${Math.ceil(m.kr.dead)} s · do té doby nestavíš`, 1, 'bad');
@@ -1109,7 +1116,12 @@ function endGame(m) {
 function showEndOverlay(m) {
   const res = m.winner === -1 ? 'draw' : m.winner === S.side ? 'win' : 'lose';
   const t = $('#endT');
-  t.textContent = { draw: 'Remíza', win: 'Vítězství', lose: 'Porážka' }[res];
+  const typ = m.type || S.type;
+  let title = { draw: 'Remíza', win: 'Vítězství', lose: 'Porážka' }[res];
+  if (typ === 'puzzle') title = m.puzzle && m.puzzle.ok ? 'Hádanka vyřešena' : 'Hádanka nevyřešena';
+  else if (typ === 'vyuka') title = res === 'win' ? 'Výuka dokončena' : 'Výuka ukončena';
+  else if (typ === 'preziti') title = m.winner === -1 ? 'Konec přežití' : res === 'win' ? 'Vydržel jsi déle' : 'Soupeř vydržel déle';
+  t.textContent = title;
   t.className = res;
   const tm = Math.floor(m.tm || 0);
   $('#endR').textContent = m.reason + ' Délka zápasu ' + Math.floor(tm / 60) + ' min ' + (tm % 60) + ' s.';

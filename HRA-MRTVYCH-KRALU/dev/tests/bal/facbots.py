@@ -7,6 +7,13 @@ harness bots, so bez-bez games play exactly as before (apart from the 1.0 global
 Every faction rule fires only if its card is in the deck (or is the card an ablation replaces, cfg['ablate']).
 Roles in FAC_DECKS: def att mix att_sn spam (FAC 8) plus my duel (all 3 own cards, used by `matrix` and `ablate`) and
 flood (kult only).
+
+Deviations from FAC 8 (found by the first smoke runs, all so that every faction card is really played, A9):
+- Tlupa (kult) is thrown only while the plan is not waiting for energy (FacMixin.plan_state) and, for attackers, with a push on
+  the field (push_on); the literal "whenever off cooldown and 60 spare" starved the plan (no towers, no push).
+- EMP (korp) also fires at one visible attack tower when >= 5 own units are near, and at >= 3 visible enemy units in the own half
+  (attackers and defenders); two visible towers are almost never seen, the push dies at the wall.
+- first_unit(): an attacker buys its tech unit (Exoskelet from Doba II, Nekromant) once as soon as it is available.
 """
 import harness as H
 import run as R
@@ -78,6 +85,7 @@ class FacMixin:
         self.deckset = set(g.sd[s].deck)
         self.attacker = isinstance(self, H.Attacker)
         self.n_gen = cfg.get('n_gen', 5)
+        self.plan_state = 'wait'                     # result of the last run_steps: 'wait' = saving for the next item
         # cells the plan already uses (the faction wall must not take them); the Zeď wall is replaced by the faction wall
         self.reserved = set((lx, y) for st in self.steps for (k, lx, y) in getattr(st, 'items', ()) if k != 'zed')
         if self.fac == 'prez':
@@ -206,15 +214,40 @@ class FacMixin:
                 self.steps.append(self.s_upg(('hnizdo',), 3, path, block=False))
 
     # ------------------------------------------------ per tick
+    def run_steps(self, steps):
+        r = super().run_steps(steps)
+        self.plan_state = r
+        return r
+
     def tick(self):
         self.fac_tick()
         super().tick()
 
     def fac_tick(self):
+        if self.attacker:
+            self.first_unit()
         if self.fac == 'korp':
             self.korp_emp()
         elif self.fac == 'kult':
             self.kult_tick()
+
+    def first_unit(self):
+        """An attacker buys the faction's tech unit (Exoskelet from Doba II, Nekromant) once as soon as it is available and
+        affordable, ahead of the push: an attacker that is held back by rebuilding its defence (or loses early) would never
+        push and so never try its card. Later copies come with the pushes (comp)."""
+        g, s = self.g, self.s
+        sd = g.sd[s]
+        if g.t < 120 or self.cfg.get('no_units'):
+            return
+        for card in ('exo', 'nekromant'):
+            if card not in self.deckset or g.stat.get('used', [{}, {}])[s].get(card, 0) or any(it[0] == card for it in self.queue):
+                continue
+            if sd.doba < need_doba(g, s, card) or sd.e < cost_of(g, s, card) + 30 or g.count(s, card) >= S.DEFS[card].get('max', 99):
+                continue
+            if getattr(self, 'cur_lane', None) is None:
+                self.cur_lane = self.lane if self.lane is not None else 4
+            self.queue.append([card, g.t])
+            return
 
     def best_center(self, items, weight, r):
         """(score, x, y) of the visible cell whose (2r+1)-wide square holds the most weight; (0, 0, 0) if nothing."""
@@ -259,24 +292,40 @@ class FacMixin:
         foe = 1 - s
         if self.attacker:
             towers = [b for b in mine(g, foe) if b.cat == 'b' and b.kind in ATTACKS and b.off <= 0 and g.vis[s][b.cy][b.cx]]
-            if len(towers) < 2:
-                return
-            sc, x, y = self.best_center(towers, lambda b: 1, 1)
-            if sc >= 2 and sum(1 for u in mine(g, s) if u.cat == 'u' and abs(u.cx - x) <= 3) >= 3:
+            if towers:
+                sc, x, y = self.best_center(towers, lambda b: 1, 1)
+                near = sum(1 for u in mine(g, s) if u.cat == 'u' and abs(u.cx - x) <= 3)
+                # FAC 8: >= 2 attack towers in the 3x3 and >= 3 own units near. Towers are rarely seen in numbers (the push
+                # dies at the wall), so one tower is enough once a real push (>= 5 units) is there.
+                if (sc >= 2 and near >= 3) or (sc >= 1 and near >= 5):
+                    return self.cast('emp', x, y)
+        # a defender (and an attacker whose push is not at the wall): the 3x3 with >= 3 visible enemy units in its own half
+        units = [e for e in mine(g, foe) if e.cat == 'u' and g.vis[s][e.cy][e.cx] and S.own_half(s, e.cx)]
+        if len(units) >= 3:
+            sc, x, y = self.best_center(units, lambda e: 1, 1)
+            if sc >= 3:
                 self.cast('emp', x, y)
-        else:
-            units = [e for e in mine(g, foe) if e.cat == 'u' and g.vis[s][e.cy][e.cx] and S.own_half(s, e.cx)]
-            if len(units) >= 3:
-                sc, x, y = self.best_center(units, lambda e: 1, 1)
-                if sc >= 3:
-                    self.cast('emp', x, y)
+
+    def push_on(self):
+        """May Tlupa be thrown now? flood: always; other attackers: queued units or >= 3 units in the Mist; defenders: after 60 s."""
+        g, s = self.g, self.s
+        if not self.attacker:
+            return g.t >= 60
+        if self.cfg.get('no_units'):
+            return True
+        if getattr(self, 'queue', None):
+            return True
+        foe = 1 - s
+        return sum(1 for e in mine(g, s) if e.cat == 'u' and local_x(foe, e.cx) <= 10) >= 3
 
     def kult_tick(self):
         g, s = self.g, self.s
         sd = g.sd[s]
         foe = 1 - s
-        # Tlupa whenever it is off cooldown and 60 energy are spare (defenders: not in the first minute)
-        if self.cfg.get('horde', True) and (self.attacker or g.t >= 60):
+        # Tlupa whenever it is off cooldown and 60 energy are spare, but never at the cost of the plan: not while the plan
+        # waits for energy (the first version of this rule starved the plan: no towers, no push), defenders not in the first
+        # minute, attackers only with a push on the field (the harness also throws one when a push enters the Mist)
+        if self.cfg.get('horde', True) and self.plan_state != 'wait' and self.push_on():
             hc = H.horde_price(g, s)[0]
             if sd.horde_cd <= 0 and sd.e >= hc + 60:
                 cd0 = sd.horde_cd

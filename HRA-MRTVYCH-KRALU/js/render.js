@@ -1064,7 +1064,7 @@ function throneCol(side, hp) {
 }
 function showThrone(side, now) {
   const m = S.snap, x = side === 0 ? -1 : S.W, X = px(x), h = S.H * CS, F = FXS.fin;
-  let hp = Math.max(0, Math.min(1, m.th[side] / S.throneMax));
+  let hp = Math.max(0, Math.min(1, m.th[side] / ((S.thMax && S.thMax[side]) || S.throneMax)));
   if (F && F.losers.includes(side)) hp *= clamp01(1 - (now - F.t0 - F.lead) / 1100);
   ctx.drawImage(throneCol(side, hp), X - CS / 2, OY, CS, h);
   const check = m.ck[side] > 0, danger = hp < 0.3 || check, blink = danger && Math.floor(now / 250) % 2, pw = Math.max(4, CS * 0.11);
@@ -1125,7 +1125,7 @@ function jobArc(j, now) {
 
 /* ---------------- relic zone, war-cry aura, darkness ---------------- */
 function relicZone(m, now, top) {
-  if (!m.rl) return;
+  if (!m.rl || S.noRelic) return;
   const [x0, x1, y0, y1] = S.relicZone || [7, 8, 3, 5], [holder, cap, prog, secs] = m.rl;
   const L = Math.min(px(x0), px(x1)) - CS / 2, T = py(y0) - CS / 2, w = (Math.abs(x1 - x0) + 1) * CS, h = (y1 - y0 + 1) * CS;
   const cx = L + w / 2, cy = T + h / 2, awake = m.tm >= (S.relicFrom ?? 120);

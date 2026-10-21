@@ -307,7 +307,7 @@
   const welcomeOpen = () => !$('#welcomeOv').classList.contains('hidden');
   function welcomeShow() {
     const ov = $('#welcomeOv');
-    ov.innerHTML = '<div class="card folio orn welc"><h2>Vítej v Hře mrtvých králů</h2>'
+    ov.innerHTML = '<div class="card folio orn welc"><h2>Vítej ve Hře mrtvých králů</h2>'
       + '<p>Dva mrtví králové, jedno město a Mlha mezi nimi. Nejrychleji se to naučíš hrou.</p>'
       + '<div class="pbtns"><button type="button" class="btn big" data-w="tut">Výuka (asi 8 min)</button>'
       + '<button type="button" class="btn" data-w="train">Výcvik proti AI</button><button type="button" class="btn dark" data-w="play">Rovnou hrát</button></div>'

@@ -248,7 +248,7 @@ function renderSettings(force) {
     setHtmlIf($('#diffSeg'), radioHtml(items, cur, 'dseg', false));
     const d = diffs.find(x => x[0] === cur);
     $('#diffDesc').textContent = pz
-      ? (d ? `Hrát sám: soupeř ${d[2] || d[1]} hájí svůj trůn proti stejným vlnám. Tlačítko Jsem připraven je pro hru dvou lidí.` : 'Hrát sám: bez soupeře. Tlačítko Jsem připraven je pro hru dvou lidí.')
+      ? (d ? `Hrát sám: soupeř ${d[2] || d[1]} hájí svůj trůn proti stejným vlnám. Tlačítko „Jsem připraven“ je pro hru dvou lidí.` : 'Hrát sám: bez soupeře. Tlačítko „Jsem připraven“ je pro hru dvou lidí.')
       : (d ? `Soupeř: ${d[2] || d[1]}. Počítač vidí jen to, co mu dovolí Mlha, a nemá žádné bonusy.` : '');
   }
   $('#slots').classList.toggle('hidden', !room);

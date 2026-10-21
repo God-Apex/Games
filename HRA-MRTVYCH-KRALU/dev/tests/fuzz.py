@@ -2,6 +2,8 @@
 NaN/Infinity), plus raw text through Lobby.handle (the real network entry point). Must give 0 exceptions.
 
 usage: python fuzz.py [--games N] [--secs S] [--actions A] [--modes kral,strateg] [--lobby N] [--seed0 100]
+                     [--content N] [--csecs 300]
+  --content seeds per 1.0 content config: Souboj/Výcvik/Přežití with every faction, all puzzles, Výuka (default 0)
   --games   games per mode (default 4: seeds seed0..seed0+3)      --secs     game time limit (default 400 s)
   --actions stop a game after A random actions (default: none)     --lobby    lobby fuzz seeds (default 3)
 Env FULL=1 keeps the thrones at 3000 HP (default: 30000, so long games reach eclipses, relic, night stages).
@@ -100,6 +102,77 @@ def fuzz_game(mode, seed, secs, max_actions=None):
     return {'mode': mode, 'seed': seed, 't': round(g.t), 'over': (g.over or {}).get('reason'), 'acts': acts,
             'ents': len(g.ents), 'tick_avg_ms': round(total / max(1, n) * 1000, 3), 'tick_max_ms': round(worst * 1000, 2),
             'snap_max_bytes': maxbytes, 'night': g.night, 'stage': g.stage, 'seen': ' '.join(sorted(evs))}
+
+
+def content_configs():
+    """1.0 content (M3): every game type x factions, built the way the lobby builds them (hmk.session.build_game)."""
+    from hmk import puzzle as PZ
+    facs = ['bez', 'prez', 'korp', 'kult']
+    out = []
+    for i, f in enumerate(facs):
+        out.append(('souboj', {'mode': 'kral' if i % 2 else 'strateg', 'map': 'nahodna'}, (f, facs[(i + 1) % 4])))
+        out.append(('vycvik', {'mode': 'strateg' if i % 2 else 'kral', 'map': 'nahodna', 'ai': 'tezka' if i % 2 else 'stredni'}, (f, None)))
+        out.append(('preziti', {'mode': 'kral' if i % 2 else 'strateg', 'map': 'nahodna'}, (f, None)))
+    out.append(('preziti', {'mode': 'kral', 'map': 'nahodna', 'ai': 'stredni'}, ('kult', None)))
+    out.append(('preziti', {'mode': 'strateg', 'map': 'most'}, ('prez', 'korp')))
+    for pid in sorted(PZ.PUZZLES):
+        out.append(('puzzle', {'mode': 'kral', 'map': 'ruiny', 'puzzle': pid}, ('bez', None)))
+    for md in ('kral', 'strateg'):
+        out.append(('vyuka', {'mode': md, 'map': 'ruiny'}, ('bez', None)))
+    return out
+
+
+def fuzz_content(cfg, seed, secs):
+    """One 1.0 game of any type with random input on the human sides, real AI on AI sides; start/snap/end JSON strict."""
+    import importlib
+    SS = importlib.import_module('hmk.session')
+    F = importlib.import_module('hmk.factions')
+    typ, opts, (f0, f1) = cfg
+    r = random.Random(seed)
+    kinds = KINDS + list(F.FAC_DEFS)
+    humans = []
+    for s, f in enumerate((f0, f1)):
+        if f is None:
+            humans.append(None)
+        else:
+            humans.append(('Fuzz%d' % s, list(F.RECOMMENDED_F[f]), f))
+    built = SS.build_game(typ, dict(opts), humans, seed=seed)
+    assert built is not None, 'build_game refused %r' % (cfg,)
+    g, ais = built
+    for s in (0, 1):
+        json.dumps(g.start_info(s), ensure_ascii=False, allow_nan=False)
+    acts, maxbytes, evs = 0, 0, set()
+    while not g.over and g.t < secs:
+        for a in ais:
+            if a is not None:
+                a.on_tick()
+        for s in (0, 1):
+            if humans[s] is None:
+                continue
+            if r.random() < 0.02:
+                g.sd[s].e += r.choice([100, 400])
+                g.sd[s].s += r.choice([20, 60])
+                g.sd[s].v += r.choice([0, 1, 3])
+            for _ in range(r.choice([0, 0, 1, 2, 5])):
+                m = message(r, g, s)
+                if m.get('t') in ('build', 'unit', 'card', 'cmd') and r.random() < 0.5:
+                    m['kind' if m['t'] in ('build', 'unit') else 'id'] = r.choice(kinds)
+                if r.random() < 0.01:
+                    m = {'t': 'tut', 'skip': r.choice([1, True, 0, None, 'x'])}
+                g.act(s, m)
+                acts += 1
+        g.step(S.TICK)
+        fx = g.fx
+        g.fx = []
+        for s in (0, 1):
+            m = g.snapshot(s, fx)
+            evs.update(e[0] for e in m.get('ev', []))
+            txt = json.dumps(m, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+            maxbytes = max(maxbytes, len(txt.encode('utf-8')))
+    if g.over:
+        json.dumps(g.end_info(), ensure_ascii=False, allow_nan=False)
+    return {'type': typ, 'opts': opts.get('puzzle') or opts.get('mode'), 'facs': list(g.facs), 'seed': seed, 't': round(g.t),
+            'over': (g.over or {}).get('code'), 'acts': acts, 'ents': len(g.ents), 'snap_max_bytes': maxbytes}
 
 
 class FakeWriter:
@@ -286,6 +359,8 @@ def main(argv=None):
     ap.add_argument('--modes', default=','.join(S.MODES))
     ap.add_argument('--lobby', type=int, default=3)
     ap.add_argument('--seed0', type=int, default=100)
+    ap.add_argument('--content', type=int, default=0, help='1.0: seeds per content config (all types x factions)')
+    ap.add_argument('--csecs', type=float, default=300, help='game time limit of a content game')
     a = ap.parse_args(argv)
     t0 = time.time()
     fails = 0
@@ -299,6 +374,18 @@ def main(argv=None):
             except Exception:
                 fails += 1
                 print('EXCEPTION in', mode, a.seed0 + i)
+                traceback.print_exc()
+    if a.content and not hasattr(S, 'Game') or a.content and not os.path.isdir(os.path.join(os.path.dirname(S.__file__), 'hmk')):
+        a.content = 0
+    for cfg in (content_configs() if a.content else []):
+        for i in range(a.content):
+            try:
+                res = fuzz_content(cfg, a.seed0 + i, a.csecs)
+                total_acts += res['acts']
+                print(res)
+            except Exception:
+                fails += 1
+                print('EXCEPTION in content', cfg, a.seed0 + i)
                 traceback.print_exc()
     for seed in range(a.lobby):
         try:
