@@ -67,3 +67,6 @@ změny z M3-G a z kontroly M3 zatím commitnuté nejsou.
 
 Hratelná verze pro mezitím: 0.5 v `%TEMP%\hmk\release05_snapshot` (`Spustit server.bat` v té složce).
 Složka hry je teď 0.9 s frakcemi, Přežitím, Výukou a hádankami. Hratelná je, vyvážení frakcí ještě není hotové.
+
+### Workflow
+- Skript pro nástroj Workflow v Claude Code: `dev/workflows/hmk-milestones.js` (args = etapa + balíky a modely ze SPEC §6).
